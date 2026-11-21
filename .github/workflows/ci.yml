@@ -37,3 +37,42 @@ jobs:
           OPENAI_API_KEY: dummy-key-for-ci
           ANTHROPIC_API_KEY: dummy-key-for-ci
         run: pytest -q sdk
+
+  server:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    services:
+      # The server's tests run on SQLite and, via TEST_POSTGRES_URL, on Postgres.
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: af
+          POSTGRES_PASSWORD: af
+          POSTGRES_DB: af_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U af -d af_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            sdk/pyproject.toml
+            server/pyproject.toml
+
+      - name: Install SDK + server
+        run: pip install -e "sdk" -e "server[dev,postgres]"
+
+      - name: Run server tests (SQLite + Postgres)
+        env:
+          OPENAI_API_KEY: dummy-key-for-ci
+          ANTHROPIC_API_KEY: dummy-key-for-ci
+          TEST_POSTGRES_URL: postgresql+psycopg://af:af@localhost:5432/af_test
+        run: pytest -q server
+
