@@ -1,3 +1,16 @@
-# anvil_forge_server
+# anvil-forge-server
 
-Control plane service (Phase 4b) and dashboard (4c). Not started yet; see docs/SPEC.md.
+The anvil-forge control plane:
+- accounts;
+- apps, tools, agents with immutable prompt versions, flows and grants;
+- app keys;
+- the bundle API that the SDK's remote mode (`Platform.from_service`) pulls from.
+
+See the repo README's "Control plane" section, and `docs/SPEC.md` (4b) for the design.
+
+```bash
+pip install -e sdk -e "server[dev]"      # from the repo root
+anvil-forge-server create-user --email you@example.com
+anvil-forge-server serve --port 8200     # http://localhost:8200/ui
+pytest -q server                          # add TEST_POSTGRES_URL=... to also run on Postgres
+```

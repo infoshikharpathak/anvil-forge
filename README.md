@@ -2,7 +2,7 @@
 
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
-Status: **Phase 4a (SDK, local mode)**. The control plane (4b) and dashboard (4c) are next. See [docs/SPEC.md](docs/SPEC.md).
+Status: **4a (SDK) and 4b (control plane) are built**; the dashboard (4c) is next. See [docs/SPEC.md](docs/SPEC.md).
 
 ## Quickstart
 
@@ -85,7 +85,38 @@ platform = Platform.from_service("https://forge.example.com", api_key=os.environ
 - **Updates.** After `start()`, the platform polls every `refresh_interval` seconds (default 30, using the ETag, so an unchanged bundle costs a 304). A new revision is compiled and swapped in: runs in progress finish on the config they started with, new runs use the new one, and tools are re-registered. An open `session_id` moves over on its next turn, keeping its conversation and sequence state, so an edited prompt applies mid-chat without a restart. `await platform.refresh()` checks immediately.
 - **Traces** record `bundle_revision`, so you can tell which published version a run used.
 
+## Control plane (`server/`)
 
+`anvil-forge-server` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
+
+```bash
+pip install -e sdk -e "server[postgres]"
+export DATABASE_URL=sqlite:///./anvil_forge_server.db   # default; or postgresql+psycopg://user:pass@host/db
+anvil-forge-server create-user --email you@example.com  # the first account (prompts for a password)
+anvil-forge-server serve --port 8200                     # migrates, then serves http://localhost:8200/ui
+```
+
+To connect an app:
+1. Sign in, then import its `anvil-forge.yaml` (or build it in the UI or API).
+2. Create an app key. It's shown once.
+3. Run the app with `Platform.from_service("http://localhost:8200", api_key)`.
+
+Prompt edits in the UI reach running apps on their next refresh. Rollback is one click.
+
+- **Accounts:** argon2 passwords. Sessions live in the database, in an HttpOnly, SameSite=Strict cookie. Every write needs the `X-Anvil-Forge: 1` header. Logins are rate-limited per email and per IP. Sign-up is off unless `ANVIL_FORGE_SIGNUP=open`.
+- **App keys:** `afk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle`.
+- **Docker:** `docker build -f server/Dockerfile -t anvil-forge-server .`, then `docker run -p 8200:8200 -v anvil-forge-data:/data anvil-forge-server`. Create the first user with `docker exec -it <container> anvil-forge-server create-user --email you@example.com`. Behind TLS, set `ANVIL_FORGE_SECURE_COOKIES=1`.
+
+| Variable | Default | |
+|---|---|---|
+| `DATABASE_URL` | `sqlite:///./anvil_forge_server.db` | Postgres: `postgresql+psycopg://…` |
+| `ANVIL_FORGE_SIGNUP` | off | `open` enables the sign-up page |
+| `ANVIL_FORGE_SESSION_DAYS` | `7` | session lifetime |
+| `ANVIL_FORGE_SECURE_COOKIES` | off | `1` behind HTTPS |
+| `ANVIL_FORGE_TRUST_PROXY` | off | `1` to rate-limit by `X-Forwarded-For` behind a proxy |
+| `ANVIL_FORGE_AUTO_MIGRATE` | `1` | `0` to run `anvil-forge-server migrate` yourself |
+
+## Config reference
 
 | Section | Shape |
 |---|---|
