@@ -41,5 +41,5 @@ def serve(port: int = 8765) -> ThreadingHTTPServer:
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
-    print(f"fake bank on http://localhost:{port}/accounts")
+    print(f"fake bank on http://localhost:{port}/accounts", flush=True)  # visible when run with &
     serve(port).serve_forever()
