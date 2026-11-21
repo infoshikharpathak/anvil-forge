@@ -202,11 +202,18 @@ def _prompt_link(db: Session, app: App, t: Trace) -> dict[str, Any] | None:
 
 def _timeline(t: Trace) -> dict[str, Any]:
     steps = sorted(t.steps or [], key=lambda s: s.get("offset_ms") or 0)
-    span = max([t.duration_ms or 0] + [(s.get("offset_ms") or 0) + (s.get("duration_ms") or 0) for s in steps]) or 1
+
+    def ends_at(s: dict) -> bool:
+        # agent_end and tool_result are stamped when the work finished; their
+        # duration reaches back from there.
+        return s.get("type") in ("agent_end", "tool_result")
+
+    span = max([t.duration_ms or 0] + [(s.get("offset_ms") or 0) + (0 if ends_at(s) else s.get("duration_ms") or 0)
+                                       for s in steps]) or 1
     out = []
     for s in steps:
         offset, duration = s.get("offset_ms") or 0, s.get("duration_ms")
-        bar_start = offset - duration if s.get("type") in ("agent_end", "tool_result") and duration else offset
+        bar_start = offset - duration if ends_at(s) and duration else offset
         out.append({**s, "left": round(100 * max(bar_start, 0) / span, 2),
                     "width": round(max(100 * (duration or 0) / span, 0.6), 2), "has_duration": duration is not None})
     return {"span_ms": round(span, 1), "steps": out}
@@ -258,3 +265,82 @@ def session_page(app_name: str, session_id: str, request: Request, db: Session =
     return _page(request, "session.html", user=user, section="apps", tab="traces", app=app,
                  session_id=session_id, turns=turns, totals=_counts(db, [Trace.app_id == app.id,
                                                                          Trace.session_id == session_id]))
+
+
+# ── across apps ───────────────────────────────────────────────────────────────
+
+WINDOWS = (7, 30, 90)
+
+
+def _daily_bars(by_day: dict[date, int], start: date, days: int) -> dict[str, Any]:
+    width, height = 960, 120
+    values = [by_day.get(start + timedelta(days=i), 0) for i in range(days)]
+    peak = max(values) or 1
+    slot = width / days
+    bars = [{"x": round(i * slot + slot * 0.15, 1), "w": round(slot * 0.7, 1),
+             "h": round((v / peak) * (height - 4), 1), "y": round(height - (v / peak) * (height - 4), 1),
+             "value": v, "day": (start + timedelta(days=i)).isoformat()} for i, v in enumerate(values)]
+    every = max(1, days // 8)
+    labels = [{"x": b["x"], "label": (start + timedelta(days=i)).strftime("%b %d")}
+              for i, b in enumerate(bars) if i % every == 0]
+    return {"width": width, "height": height, "bars": bars, "labels": labels, "peak": max(values)}
+
+
+@router.get("/ui/dashboard", response_class=HTMLResponse)
+def all_apps_dashboard(request: Request, db: Session = Depends(get_db)):
+    user = _signed_in(request, db)
+    if user is None:
+        return _login_redirect(request)
+    try:
+        days = int(request.query_params.get("days") or 30)
+    except ValueError:
+        days = 30
+    days = days if days in WINDOWS else 30
+    now = _now()
+    first_day = (now - timedelta(days=days - 1)).date()
+    since = datetime.combine(first_day, time.min, tzinfo=timezone.utc)
+    today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    apps = db.scalars(select(App).where(App.owner_id == user.id).order_by(App.name)).all()
+    names = {a.id: a.name for a in apps}
+    ids = list(names) or [-1]
+    mine = [Trace.app_id.in_(ids)]
+    window = [*mine, Trace.started_at >= since]
+
+    tokens = Trace.token_input + Trace.token_output
+    per_app = {app_id: {"traces": n, "blocked": b, "errors": e, "tokens": tok or 0, "cost_usd": cost or 0.0,
+                        "last": aware(last)}
+               for app_id, n, b, e, tok, cost, last in db.execute(
+                   select(Trace.app_id, func.count(Trace.id),
+                          func.coalesce(func.sum(case((Trace.status == "blocked", 1), else_=0)), 0),
+                          func.coalesce(func.sum(case((Trace.status == "error", 1), else_=0)), 0),
+                          func.sum(tokens), func.sum(Trace.cost_usd), func.max(Trace.started_at))
+                   .where(*window).group_by(Trace.app_id))}
+    app_rows = [{"name": a.name, **per_app.get(a.id, {"traces": 0, "blocked": 0, "errors": 0, "tokens": 0,
+                                                       "cost_usd": 0.0, "last": None})} for a in apps]
+
+    by_model = [{"model": m or "unknown", "traces": n, "token_input": i or 0, "token_output": o or 0,
+                 "tokens": (i or 0) + (o or 0), "cost_usd": c or 0.0}
+                for m, n, i, o, c in db.execute(
+                    select(Trace.model, func.count(Trace.id), func.sum(Trace.token_input),
+                           func.sum(Trace.token_output), func.sum(Trace.cost_usd))
+                    .where(*window).group_by(Trace.model).order_by(func.sum(tokens).desc()))]
+
+    by_day: dict[date, dict[str, Any]] = {}
+    for started, app_id, tok in db.execute(select(Trace.started_at, Trace.app_id, tokens).where(*window)):
+        d = aware(started).date()
+        row = by_day.setdefault(d, {"tokens": 0, "traces": 0, "apps": {}})
+        row["tokens"] += tok or 0
+        row["traces"] += 1
+        row["apps"][names[app_id]] = row["apps"].get(names[app_id], 0) + (tok or 0)
+    day_rows = [{"day": d, **by_day[d]} for d in sorted(by_day, reverse=True)]
+
+    recent = db.execute(select(Trace, App.name).join(App, App.id == Trace.app_id).where(*mine)
+                        .order_by(Trace.started_at.desc(), Trace.id.desc()).limit(20)).all()
+    return _page(
+        request, "overview.html", user=user, section="dashboard", days=days, windows=WINDOWS,
+        totals=_counts(db, window), today=_counts(db, [*mine, Trace.started_at >= today]),
+        apps=app_rows, by_model=by_model, by_day=day_rows,
+        bars=_daily_bars({d: r["tokens"] for d, r in by_day.items()}, first_day, days),
+        recent=[_row(t, name) for t, name in recent],
+    )

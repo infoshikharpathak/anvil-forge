@@ -35,7 +35,7 @@
 {%- endmacro %}
 
 {% macro chart_svg(chart, label) -%}
-<svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height + 22 }}" role="img" aria-label="{{ label }}" preserveAspectRatio="none">
+<svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height + 22 }}" role="img" aria-label="{{ label }}">
   {% for d in chart.days %}
     <line x1="{{ d.x }}" x2="{{ d.x }}" y1="0" y2="{{ chart.height }}" class="grid"/>
     <text x="{{ d.x + 4 }}" y="{{ chart.height + 16 }}" class="axis">{{ d.label }}</text>

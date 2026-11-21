@@ -16,7 +16,7 @@ from ..accounts import session_user
 from ..deps import get_db
 from ..keys import key_view
 from ..models import Agent, App, AppKey, AuditLog, Flow, Grant, PromptVersion, Tool
-from ..security import SESSION_COOKIE
+from ..security import SESSION_COOKIE, aware
 from ..workspace import latest_revision, user_app
 from .manage import agent_view, version_view
 
@@ -31,8 +31,9 @@ def _ms(value) -> str:
     return f"{value:.0f} ms" if value < 1000 else f"{value / 1000:.2f} s" if value < 60_000 else f"{value / 60_000:.1f} min"
 
 
-def _dt(value) -> str:
-    return value.strftime("%Y-%m-%d %H:%M:%S") if value else "—"
+def _dt(value, fmt: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """UTC, whatever timezone the database handed back."""
+    return aware(value).strftime(fmt) if value else "—"
 
 
 def _num(value) -> str:

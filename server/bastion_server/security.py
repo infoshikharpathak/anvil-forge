@@ -59,7 +59,11 @@ def same(a: str, b: str) -> bool:
 
 
 def aware(dt: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; everything we store is UTC."""
-    if dt is not None and dt.tzinfo is None:
+    """The same instant as a UTC datetime. SQLite returns naive datetimes
+    (everything we store is UTC); Postgres returns them in the server's
+    TimeZone setting, which needn't be UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
         return dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt.astimezone(timezone.utc)

@@ -27,7 +27,7 @@
     <table><thead><tr><th>Version</th><th>Created</th><th>Instructions</th><th></th></tr></thead><tbody>
     {% for v in versions[ag.name] %}
       <tr id="v-{{ ag.name }}-{{ v.label }}"><td class="mono">{{ v.label }}{% if v.active %} <span class="pill">active</span>{% endif %}</td>
-        <td>{{ v.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        <td>{{ v.created_at|dt('%Y-%m-%d %H:%M') }}</td>
         <td><pre>{{ v.instructions[:400] }}{% if v.instructions|length > 400 %}…{% endif %}</pre></td>
         <td>{% if not v.active %}<button class="ghost" data-api="POST /v1/apps/{{ app.name }}/agents/{{ ag.name }}/rollback" data-body='{"version": {{ v.version }}}'>Make active</button>{% endif %}</td></tr>
     {% endfor %}
@@ -73,8 +73,8 @@
   <p class="sub">An app key lets the SDK fetch this app's bundle and send its traces, and nothing else. It's shown once; only its hash is stored.</p>
   <table><thead><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>
   {% for k in keys %}
-    <tr><td>{{ k.name or '—' }}</td><td class="mono">{{ k.prefix }}…</td><td>{{ k.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
-      <td>{{ k.last_used_at.strftime('%Y-%m-%d %H:%M') if k.last_used_at else 'never' }}</td>
+    <tr><td>{{ k.name or '—' }}</td><td class="mono">{{ k.prefix }}…</td><td>{{ k.created_at|dt('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ k.last_used_at|dt('%Y-%m-%d %H:%M') if k.last_used_at else 'never' }}</td>
       <td>{% if k.active %}<button class="danger" data-api="DELETE /v1/apps/{{ app.name }}/keys/{{ k.id }}" data-confirm="Revoke key?">Revoke</button>
           {% else %}<span class="pill off">revoked</span>{% endif %}</td></tr>
   {% else %}<tr><td colspan="5" class="sub">No keys.</td></tr>{% endfor %}

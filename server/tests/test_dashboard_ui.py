@@ -193,3 +193,11 @@ def test_apps_list_links_to_the_dashboard(seeded):
     html = client.get("/ui").text
     assert 'href="/ui/apps/ironclad/dashboard"' in html
     assert 'href="/ui/apps/ironclad/traces"' in client.get("/ui/apps/ironclad").text  # tabs on config too
+
+
+def test_timeline_span_is_the_run_not_offset_plus_duration(seeded):
+    client, _, _, recs = seeded
+    t = client.get(f"/ui/apps/ironclad/traces/{recs['ok']['trace_id']}").context["t"]
+    assert t["timeline"]["span_ms"] == 1500.0  # agent_end at 1500 ms is the end, not 1500 + its duration
+    end = t["timeline"]["steps"][-1]
+    assert end["type"] == "agent_end"

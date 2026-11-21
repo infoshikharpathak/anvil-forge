@@ -12,7 +12,7 @@
       <tr><td><a href="/ui/apps/{{ a.name }}/dashboard"><strong>{{ a.name }}</strong></a>
           <a href="/ui/apps/{{ a.name }}" class="sub-inline">config</a></td>
         <td class="mono">{{ a.base_url or "—" }}</td><td>{{ a.agents }}</td><td>{{ a.tools }}</td>
-        <td class="mono">{{ a.revision }}</td><td>{{ a.updated_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
+        <td class="mono">{{ a.revision }}</td><td>{{ a.updated_at|dt('%Y-%m-%d %H:%M') }}</td></tr>
     {% endfor %}
     </tbody>
   </table>

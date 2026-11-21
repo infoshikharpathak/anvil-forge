@@ -22,7 +22,7 @@
   </dl>
   {% if runs|length > 1 %}
   <p class="sub" style="margin:8px 0 0">This trace_id has {{ runs|length }} runs:
-    {% for r in runs %}<a href="?run={{ r.run_id }}" class="{{ 'on-run' if r.run_id == t.run_id }}">{{ r.started_at.strftime('%H:%M:%S') }} {{ r.agent }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
+    {% for r in runs %}<a href="?run={{ r.run_id }}" class="{{ 'on-run' if r.run_id == t.run_id }}">{{ r.started_at|dt('%H:%M:%S') }} {{ r.agent }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
   {% endif %}
 </div>
 

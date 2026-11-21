@@ -6,7 +6,7 @@
 <div class="panel scroll">
   <table><thead><tr><th>When</th><th>App</th><th>Action</th><th>What</th><th>Change</th></tr></thead><tbody>
   {% for e in entries %}
-    <tr><td>{{ e.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td><td class="mono">{{ e.app or '—' }}</td>
+    <tr><td>{{ e.created_at|dt('%Y-%m-%d %H:%M:%S') }}</td><td class="mono">{{ e.app or '—' }}</td>
       <td>{{ e.action }}</td><td><span class="sub">{{ e.entity_type }}</span> <span class="mono">{{ e.entity_name }}</span></td>
       <td>{% if e.before or e.after %}<details><summary>before / after</summary>
         <pre>{{ e.before|tojson(indent=2) if e.before else '—' }}</pre><pre>{{ e.after|tojson(indent=2) if e.after else '—' }}</pre></details>{% endif %}</td></tr>
