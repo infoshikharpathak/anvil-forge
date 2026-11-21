@@ -5,6 +5,7 @@ real Agent Forge (execution path, hooks, ToolSource, GraphRunner). Only
 the model and the tool HTTP endpoints are fake.
 """
 
+import json
 import os
 
 import pytest
@@ -235,3 +236,21 @@ async def test_live_classifier_separates_requests_from_injections():
     missed = [t for t in INJECTIONS if not (await clf(t)).detected]
     assert flagged == [], f"ordinary requests flagged as injection: {flagged}"
     assert missed == [], f"injections not caught: {missed}"
+
+
+async def test_redact_fields_keep_secrets_from_the_model_and_the_trace(monkeypatch):
+    """Anvil's per-tool redact_fields, declared in the platform config: a
+    secret the tool returns never reaches the model or the local trace."""
+    import httpx
+
+    cfg = base_config()
+    cfg["apps"]["ironclad"]["tools"]["get_accounts"]["redact_fields"] = ["otp_code"]
+    llm = ScriptedOpenAI({SUPPORT: [{"tool": "get_accounts", "args": {"user_id": "u1"}}, {"text": "You have CHK-1."}]})
+    monkeypatch.setenv("IRONCLAD_TOKEN", "tok")
+    leaky = httpx.MockTransport(lambda req: httpx.Response(200, json={"accounts": [{"id": "CHK-1"}], "otp_code": "482913"}))
+    p = Platform.from_config(cfg, app="ironclad", openai_client=llm, http_transport=leaky)
+    reply = await p.run_agent("support_agent", "accounts", trace_id="redact-1")
+    (seen,) = llm.tool_results(SUPPORT)
+    assert seen["data"] == {"accounts": [{"id": "CHK-1"}]}
+    assert "482913" not in json.dumps(llm.requests[SUPPORT]) and "482913" not in json.dumps(reply.trace)
+    assert "482913" not in json.dumps(LocalSink().read("redact-1"))

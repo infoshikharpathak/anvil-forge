@@ -76,7 +76,7 @@ platform.describe_agent("support_agent")             # effective policy: tools +
 
 | Section | Shape |
 |---|---|
-| `apps` | Anvil Phase 2 apps: `base_url`, `auth` (header + `secret_env` env var name, never the secret), `tools` (`path`, `method`, `trust`, `parameters`, ...) |
+| `apps` | Anvil Phase 2 apps: `base_url`, `auth` (header + `secret_env` env var name, never the secret), `tools` (`path`, `method`, `trust`, `parameters`, `redact_fields`, ...). `redact_fields` strips secrets a tool returns before the agent or any trace sees them. |
 | `agents` | `app.agent`: `instructions`, `prompt_version`, `backend` (`openai` \| `anthropic`), `model`, `tools` (bare = own app, `app.tool` = granted), optional `description`, `sequences`, `strictness`, `trust_overrides` |
 | `flows` | `app.flow`: `entry`, `nodes` (`agent`, `task`), `edges` (`from`, `to`, optional `condition_key`). Nodes must be the flow's own app's agents. |
 | `grants` | `{tool: notify.send_email, to_apps: [ironclad]}` |
