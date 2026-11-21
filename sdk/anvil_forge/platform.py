@@ -37,9 +37,12 @@ from anvil import Anvil
 from anvil.namespaces import app_of, relative, resolve, short_name
 from anvil.policy import resolve_agent_policy
 
+import httpx
+
 from .agents import ClientProvider, PlatformFactory
 from .classifier import ProviderClassifier, default_provider
-from .config import POLICY_NAME, CompiledConfig, load_config
+from .config import POLICY_NAME, CompiledConfig, ConfigError, load_config
+from .remote import BundleClient, BundleResult, ServiceError
 from .hooks import AnvilHooks
 from .tool_source import AnvilToolSource
 from .trace import Collectors, LocalSink, RunCollector, TraceExporter, TraceRecorderHooks, TraceSink, build_trace
@@ -49,6 +52,24 @@ log = logging.getLogger(__name__)
 
 class PlatformError(Exception):
     pass
+
+
+@dataclass
+class _Remote:
+    client: BundleClient
+    etag: str
+    interval: float
+    from_cache: bool = False
+
+
+def _cached_or_fail(client: BundleClient, url: str, error: Exception) -> BundleResult:
+    cached = client.load_cache()
+    if cached is None:
+        raise PlatformError(
+            f"Can't reach the anvil-forge service at {url} ({error}) and there's no cached bundle "
+            f"at {client.cache_path}. Start the service, or run once while it's up to create the cache."
+        ) from None
+    return cached
 
 
 @dataclass
@@ -89,6 +110,7 @@ class _Session:
     agents: dict[str, Any] = field(default_factory=dict)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_used: float = field(default_factory=time.monotonic)
+    config_version: int = 0
 
 
 class Platform:
@@ -102,6 +124,7 @@ class Platform:
         sinks: list[TraceSink] | None = None,
         http_transport: Any = None,
         prepare_tool_call: Any = None,
+        bundle_revision: int | None = None,
     ) -> None:
         """*prepare_tool_call* ``(ctx, tool_name, params) -> params`` runs on
         every tool call before Anvil sees it. Use it for values the model
@@ -110,52 +133,166 @@ class Platform:
         if app not in compiled.platform.apps:
             raise PlatformError(f"App {app!r} is not declared in the config.")
         self.app = app
-        self.config = compiled
         self._clients = ClientProvider(openai=openai_client, anthropic=anthropic_client)
         self._collectors = Collectors()
         self._http_transport = http_transport  # test seam for Anvil's upstream calls
+        self._prepare = prepare_tool_call
+        self._run_anvils: dict[str, Anvil] = {}
+        self._sessions: dict[str, _Session] = {}
+        self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
+        self._started = False
+        self._lock = asyncio.Lock()
+        self._remote: _Remote | None = None
+        self._refresh_task: asyncio.Task | None = None
+        # Bumped on every config swap; sessions compare it to know they're stale.
+        self._config_version = 0
+        self._install(compiled, bundle_revision)
 
+    def _install(self, compiled: CompiledConfig, bundle_revision: int | None) -> None:
+        """Set the config and everything derived from it. Runs already in
+        progress keep what they captured at their start."""
+        self.config = compiled
+        self.bundle_revision = bundle_revision
+        self._session_ttl = compiled.anvil.settings.session_ttl
         cdef = compiled.platform.classifier
         self._classifier = None
         if cdef.enabled:
-            backends = [a.backend for a in compiled.agents_of(app).values()]
+            backends = [a.backend for a in compiled.agents_of(self.app).values()]
             self._classifier = ProviderClassifier(
                 self._clients, cdef.provider or default_provider(backends), cdef.model,
                 on_usage=self._collectors.on_scan,
             )
-
-        self._run_anvils: dict[str, Anvil] = {}
-        self._sessions: dict[str, _Session] = {}
-        self._session_ttl = compiled.anvil.settings.session_ttl
-        self._template_anvil = self._new_anvil(session_id=f"{app}-template")
+        self._template_anvil = self._new_anvil(session_id=f"{self.app}-template")
         self._source = AnvilToolSource(
-            self._template_anvil, app,
+            self._template_anvil, self.app,
             observer=self._collectors.on_tool_call,
             anvil_for=lambda ctx: self._run_anvils.get(ctx.run_id),
-            prepare=prepare_tool_call,
+            prepare=self._prepare,
         )
-        self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
-        self._started = False
-        self._lock = asyncio.Lock()
 
     @classmethod
     def from_config(cls, source: str | Path | dict, app: str, **kwargs: Any) -> Platform:
         return cls(load_config(source), app, **kwargs)
 
+    @classmethod
+    def from_service(
+        cls,
+        url: str,
+        api_key: str,
+        *,
+        cache_dir: str | Path | None = None,
+        refresh_interval: float = 30.0,
+        service_transport: Any = None,
+        **kwargs: Any,
+    ) -> Platform:
+        """Run on the bundle the anvil-forge service publishes for the key's app.
+
+        Fetches the bundle now and caches it on disk. If the service can't be
+        reached, it runs on the cached bundle; with no cache it raises
+        PlatformError. ``start()`` begins polling every *refresh_interval*
+        seconds (ETag, so unchanged bundles cost a 304); a new revision is
+        swapped in without a restart. *service_transport* is an httpx
+        transport for reaching the service (tests).
+        """
+        client = BundleClient(url, api_key, cache_dir=cache_dir, transport=service_transport)
+        try:
+            result = client.fetch()
+        except ServiceError as e:
+            if e.status in (401, 403):
+                raise PlatformError(f"The anvil-forge service at {url} rejected the app key ({e}).") from None
+            result = _cached_or_fail(client, url, e)
+        except httpx.HTTPError as e:
+            result = _cached_or_fail(client, url, e)
+        else:
+            client.save_cache(result)
+        if result.from_cache:
+            log.warning("[platform] anvil-forge service unreachable; running on cached revision %s of %r",
+                        result.revision, result.app)
+        try:
+            compiled = load_config(result.bundle)
+        except ConfigError as e:
+            raise PlatformError(f"The bundle for {result.app!r} (revision {result.revision}) doesn't compile: {e}") from None
+        platform = cls(compiled, result.app, bundle_revision=result.revision, **kwargs)
+        platform._remote = _Remote(client, result.etag, refresh_interval, from_cache=result.from_cache)
+        return platform
+
     # ── lifecycle ────────────────────────────────────────────────────────────
 
     async def start(self) -> None:
-        """Register this app's tools with Agent Forge. Runs call it lazily."""
+        """Register this app's tools with Agent Forge (and, in remote mode,
+        start polling the service). Runs call it lazily."""
         async with self._lock:
             if not self._started:
                 await register_tool_source(self._source)
                 self._started = True
+                if self._remote and self._remote.interval > 0 and self._refresh_task is None:
+                    self._refresh_task = asyncio.create_task(self._refresh_loop())
 
     async def close(self) -> None:
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+            try:
+                await self._refresh_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._refresh_task = None
         async with self._lock:
             if self._started:
                 unregister_tool_source(self._source)
                 self._started = False
+
+    # ── remote mode ──────────────────────────────────────────────────────────
+
+    async def refresh(self) -> bool:
+        """Ask the service for a newer bundle now. Returns True if a new
+        revision was applied. Never raises: a failure keeps the current config."""
+        remote = self._remote
+        if remote is None:
+            return False
+        try:
+            result = await asyncio.to_thread(remote.client.fetch, remote.etag)
+        except Exception as e:
+            log.warning("[platform] bundle refresh failed, keeping revision %s: %s", self.bundle_revision, e)
+            return False
+        if result is None:
+            return False  # 304: still current
+        return await self._apply_bundle(result)
+
+    async def _refresh_loop(self) -> None:
+        while True:
+            await asyncio.sleep(self._remote.interval)
+            await self.refresh()
+
+    async def _apply_bundle(self, result: BundleResult) -> bool:
+        if result.app != self.app:
+            log.error("[platform] service sent a bundle for %r, expected %r; ignored", result.app, self.app)
+            return False
+        try:
+            compiled = load_config(result.bundle)
+        except ConfigError as e:
+            log.error("[platform] revision %s doesn't compile, keeping %s: %s", result.revision, self.bundle_revision, e)
+            return False
+        async with self._lock:
+            old = (self.config, self.bundle_revision, self._classifier, self._template_anvil, self._source)
+            started = self._started
+            if started:
+                unregister_tool_source(self._source)
+            self._install(compiled, result.revision)
+            if started:
+                try:
+                    await register_tool_source(self._source)
+                except Exception as e:  # e.g. a new tool name collides: keep running the old one
+                    log.error("[platform] couldn't register revision %s's tools, keeping %s: %s",
+                              result.revision, old[1], e)
+                    (self.config, self.bundle_revision, self._classifier, self._template_anvil, self._source) = old
+                    await register_tool_source(self._source)
+                    return False
+            self._config_version += 1
+            self._remote.etag = result.etag
+            self._remote.from_cache = False
+        await asyncio.to_thread(self._remote.client.save_cache, result)
+        log.info("[platform] now on revision %s of %r", result.revision, self.app)
+        return True
 
     async def __aenter__(self) -> Platform:
         await self.start()
@@ -204,10 +341,38 @@ class Platform:
             self._sessions.pop(sid, None)
         sess = self._sessions.get(session_id)
         if sess is None:
-            sess = _Session(session_id, self._new_anvil(session_id=f"session:{session_id}"))
+            sess = _Session(session_id, self._new_anvil(session_id=f"session:{session_id}"),
+                            config_version=self._config_version)
             self._sessions[session_id] = sess
         sess.last_used = now
         return sess
+
+    async def _catch_up(self, sess: _Session) -> None:
+        """Move a session onto the current config (called under its lock).
+
+        It keeps Anvil's sequence state (records are copied into a new Anvil
+        built from the new policy) and each agent's conversation history (the
+        agent is rebuilt with the new prompt and given the old messages). So
+        an edited prompt applies from the session's next turn, mid-chat.
+        """
+        if sess.config_version == self._config_version:
+            return
+        old_anvil = sess.anvil
+        new_anvil = self._new_anvil(session_id=old_anvil.session_id)
+        for agent_id in {**old_anvil.policy_engine.policy.agents, **self.config.platform.agents}:
+            for call in old_anvil.call_log.calls_for(old_anvil.session_id, agent_id):
+                new_anvil.call_log.record(new_anvil.session_id, call)
+        factory = PlatformFactory(self.config, self.app, self._clients, route=self._source.call)
+        agents = {}
+        for agent_id, old_agent in sess.agents.items():
+            if agent_id not in self.config.platform.agents:
+                continue  # removed from the app: it starts fresh if it ever returns
+            new_agent = await factory.create(name=agent_id)
+            # Same backend classes keep history as a message list.
+            if hasattr(old_agent, "_messages") and hasattr(new_agent, "_messages"):
+                new_agent._messages = list(old_agent._messages)
+            agents[agent_id] = new_agent
+        sess.anvil, sess.agents, sess.config_version = new_anvil, agents, self._config_version
 
     async def end_session(self, session_id: str) -> bool:
         """Forget a session: its Anvil sequence state and agent memory.
@@ -304,13 +469,14 @@ class Platform:
             return await self._run_agent(agent_id, message, trace_id, None)
         sess = self._session(session_id)
         async with sess.lock:
+            await self._catch_up(sess)
             result = await self._run_agent(agent_id, message, trace_id, sess)
             sess.last_used = time.monotonic()
             return result
 
     async def _run_agent(self, agent_id: str, message: str, trace_id: str | None, sess: _Session | None) -> RunResult:
         run = await self._begin("agent", agent_id, message, trace_id, sess)
-        factory, tracer, collector = run
+        factory, tracer, collector, run_config = run
         content, status, outcome, error = "", "failed", "failed", None
         try:
             agent = sess.agents.get(agent_id) if sess else None
@@ -330,7 +496,7 @@ class Platform:
             if sess is None:
                 await factory.kill_all()
             trace = await self._finish(run, outcome=outcome, error=error, output=content,
-                                       framework=self.config.platform.agents[agent_id].backend)
+                                       framework=run_config.platform.agents[agent_id].backend)
         return_value.trace = trace
         return return_value
 
@@ -349,6 +515,7 @@ class Platform:
             return await self._run_flow(flow_id, message, trace_id, None)
         sess = self._session(session_id)
         async with sess.lock:
+            await self._catch_up(sess)
             result = await self._run_flow(flow_id, message, trace_id, sess)
             sess.last_used = time.monotonic()
             return result
@@ -377,7 +544,7 @@ class Platform:
             entry=qid(flow.entry),
         )
         run = await self._begin("flow", flow_id, message, trace_id, sess)
-        factory, tracer, collector = run
+        factory, tracer, collector, _ = run
         messages: list[dict[str, str]] = []
         stopped_by, outcome, error = None, "failed", None
         try:
@@ -418,21 +585,24 @@ class Platform:
         collector = RunCollector(
             trace_id=tracer.trace_id, run_id=tracer.run_id, app=self.app,
             kind=kind, target=target, message=message, session_id=sess.id if sess else None,
+            bundle_revision=self.bundle_revision,
         )
         self._collectors.start(collector)
         factory = PlatformFactory(self.config, self.app, self._clients, route=self._source.call)
-        return factory, tracer, collector
+        # The config this run started on: a refresh mid-run mustn't change how
+        # the run executes, or how its trace describes it.
+        return factory, tracer, collector, self.config
 
     async def _finish(self, run, *, outcome: str, error: str | None, output: str, framework: str) -> dict:
         """Persist the Agent Forge row, merge the trace and export it. Never raises."""
-        _, tracer, collector = run
+        _, tracer, collector, config = run
         anvil = self._run_anvils.pop(tracer.run_id, None)
         self._collectors.end(tracer.run_id)
         trace: dict[str, Any] = {}
         try:
             await tracer.finish(outcome=outcome, error=error, framework_used=framework, report=output)
             row = await asyncio.to_thread(db.get_run, tracer.run_id)
-            trace = build_trace(collector, tracer, row, anvil, self.config,
+            trace = build_trace(collector, tracer, row, anvil, config,
                                 outcome=outcome, error=error, output=output)
             await self._exporter.export(trace)
         except Exception:

@@ -72,7 +72,20 @@ platform.session_prerequisites("chat-42", "support_agent")  # sequence prerequis
 platform.describe_agent("support_agent")             # effective policy: tools + trust, sequences, settings
 ```
 
-## Config reference
+## Remote mode
+
+Instead of a local YAML file, an app can run on what the anvil-forge control plane (`server/`) publishes for it:
+
+```python
+platform = Platform.from_service("https://forge.example.com", api_key=os.environ["ANVIL_FORGE_KEY"])
+```
+
+- **The app comes from the key.** The bundle is fetched at startup and cached on disk (`~/.cache/anvil-forge`, or `cache_dir=`). The cache holds the bundle and its revision, never the key, and the bundle only names env vars.
+- **If the service is down at startup**, the platform runs on the cached bundle. With no cache, it fails with an error naming the URL and the cache path. A rejected key always fails.
+- **Updates.** After `start()`, the platform polls every `refresh_interval` seconds (default 30, using the ETag, so an unchanged bundle costs a 304). A new revision is compiled and swapped in: runs in progress finish on the config they started with, new runs use the new one, and tools are re-registered. An open `session_id` moves over on its next turn, keeping its conversation and sequence state, so an edited prompt applies mid-chat without a restart. `await platform.refresh()` checks immediately.
+- **Traces** record `bundle_revision`, so you can tell which published version a run used.
+
+
 
 | Section | Shape |
 |---|---|

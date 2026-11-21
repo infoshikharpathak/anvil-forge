@@ -54,6 +54,7 @@ class RunCollector:
     target: str  # qualified agent or flow ID
     message: str
     session_id: str | None = None
+    bundle_revision: int | None = None  # remote mode: which service revision this run used
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     _t0: float = field(default_factory=time.perf_counter, repr=False)
     inputs: dict[str, list[str]] = field(default_factory=dict)
@@ -212,6 +213,7 @@ def build_trace(
         "trace_id": collector.trace_id,
         "run_id": collector.run_id,
         "session_id": collector.session_id,
+        "bundle_revision": collector.bundle_revision,
         "app": collector.app,
         "kind": collector.kind,
         "target": collector.target,
