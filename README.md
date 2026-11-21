@@ -65,6 +65,11 @@ await platform.run_agent("support_agent", message, session_id="chat-42")  # mult
 await platform.run_flow("dispute_flow", message)   # a graph of registered agents
 platform.list_agents(); platform.list_tools(); platform.list_flows()
 Platform.from_config(cfg, app="ironclad", sinks=[LocalSink("traces/run.jsonl")])
+Platform.from_config(cfg, app="ironclad",           # fill in values the model must not choose
+                     prepare_tool_call=lambda ctx, tool, params: {**params, "user_id": current_user()})
+platform.session_records("chat-42")                  # the session's Anvil records (tool calls, checks)
+platform.session_prerequisites("chat-42", "support_agent")  # sequence prerequisites already satisfied
+platform.describe_agent("support_agent")             # effective policy: tools + trust, sequences, settings
 ```
 
 ## Config reference
@@ -72,7 +77,7 @@ Platform.from_config(cfg, app="ironclad", sinks=[LocalSink("traces/run.jsonl")])
 | Section | Shape |
 |---|---|
 | `apps` | Anvil Phase 2 apps: `base_url`, `auth` (header + `secret_env` env var name, never the secret), `tools` (`path`, `method`, `trust`, `parameters`, ...) |
-| `agents` | `app.agent`: `instructions`, `prompt_version`, `backend` (`openai` \| `anthropic`), `model`, `tools` (bare = own app, `app.tool` = granted), optional `sequences`, `strictness` |
+| `agents` | `app.agent`: `instructions`, `prompt_version`, `backend` (`openai` \| `anthropic`), `model`, `tools` (bare = own app, `app.tool` = granted), optional `description`, `sequences`, `strictness`, `trust_overrides` |
 | `flows` | `app.flow`: `entry`, `nodes` (`agent`, `task`), `edges` (`from`, `to`, optional `condition_key`). Nodes must be the flow's own app's agents. |
 | `grants` | `{tool: notify.send_email, to_apps: [ironclad]}` |
 | `settings` | Passed to Anvil (for example `injection_scanning`) |

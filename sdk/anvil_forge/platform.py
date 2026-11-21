@@ -34,7 +34,8 @@ from agent_forge.core.orchestrator import GraphEdge, GraphNode, GraphSpec
 from agent_forge.tools.sources import register_tool_source, unregister_tool_source
 from agent_forge.tracing import RunTracer
 from anvil import Anvil
-from anvil.namespaces import app_of, resolve, short_name
+from anvil.namespaces import app_of, relative, resolve, short_name
+from anvil.policy import resolve_agent_policy
 
 from .agents import ClientProvider, PlatformFactory
 from .classifier import ProviderClassifier, default_provider
@@ -100,7 +101,12 @@ class Platform:
         anthropic_client: Any = None,
         sinks: list[TraceSink] | None = None,
         http_transport: Any = None,
+        prepare_tool_call: Any = None,
     ) -> None:
+        """*prepare_tool_call* ``(ctx, tool_name, params) -> params`` runs on
+        every tool call before Anvil sees it. Use it for values the model
+        must not choose, such as the signed-in user's ID or idempotency keys.
+        ``tool_name`` is the app-relative name (``get_accounts``)."""
         if app not in compiled.platform.apps:
             raise PlatformError(f"App {app!r} is not declared in the config.")
         self.app = app
@@ -126,6 +132,7 @@ class Platform:
             self._template_anvil, app,
             observer=self._collectors.on_tool_call,
             anvil_for=lambda ctx: self._run_anvils.get(ctx.run_id),
+            prepare=prepare_tool_call,
         )
         self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
         self._started = False
@@ -215,6 +222,70 @@ class Platform:
 
     def list_sessions(self) -> list[str]:
         return list(self._sessions)
+
+    def session_records(self, session_id: str) -> list[dict[str, Any]]:
+        """Every Anvil record in a session, oldest first: tool calls and
+        agent checks (``kind``), with params, result, violation, correction
+        and latency. Unknown or expired sessions return []."""
+        sess = self._sessions.get(session_id)
+        if sess is None:
+            return []
+        records = []
+        for agent_id in self.config.agents_of(self.app):
+            for call in sess.anvil.call_log.calls_for(sess.anvil.session_id, agent_id):
+                records.append(call.model_dump(mode="json"))
+        records.sort(key=lambda r: r["timestamp"])
+        return records
+
+    def session_prerequisites(self, session_id: str, agent: str) -> list[str]:
+        """Tools *agent* has already run successfully in this session, i.e.
+        the prerequisites it has satisfied for its sequence rules. Names are
+        app-relative."""
+        agent_id = self._qualify(agent, self.config.platform.agents, "agent")
+        sess = self._sessions.get(session_id)
+        if sess is None:
+            return []
+        done = sess.anvil.call_log.history_names(sess.anvil.session_id, agent_id)
+        return [relative(t, self.app) for t in done]
+
+    def describe_agent(self, agent: str) -> dict[str, Any]:
+        """An agent's effective policy, as Anvil enforces it: its tools with
+        resolved trust, sequence rules, strictness, and the governance
+        settings. Names are app-relative."""
+        agent_id = self._qualify(agent, self.config.platform.agents, "agent")
+        spec = self.config.platform.agents[agent_id]
+        policy = resolve_agent_policy(agent_id, self.config.anvil.policies[POLICY_NAME].agents[agent_id])
+        tools = []
+        for tool_id in policy.allowed_tools:
+            tool = self.config.anvil.tools[tool_id]
+            tools.append({
+                "name": relative(tool_id, self.app),
+                "trust": policy.trust_overrides.get(tool_id) or tool.trust,
+                "injection_scanning": tool.injection_scanning,
+                "description": tool.description,
+            })
+        settings = self.config.anvil.settings
+        return {
+            "id": agent_id,
+            "name": short_name(agent_id),
+            "description": spec.description,
+            "prompt_version": spec.prompt_version,
+            "strictness": policy.strictness,
+            "tools": tools,
+            "sequences": [
+                {
+                    "before": relative(s.before, self.app),
+                    "requires": [relative(r, self.app) for r in s.requires],
+                    "match_fields": list(s.match_fields),
+                }
+                for s in policy.sequences
+            ],
+            "settings": {
+                "injection_scanning": settings.injection_scanning,
+                "default_trust": settings.default_trust,
+                "session_ttl": settings.session_ttl,
+            },
+        }
 
     # ── running ──────────────────────────────────────────────────────────────
 

@@ -30,6 +30,11 @@ _EMPTY_SCHEMA = {"type": "object", "properties": {}}
 # (ctx, called_name, tool_id, args, response_dict) -> None
 ToolCallObserver = Callable[[RunContext, str, str, dict, dict], None]
 
+# (ctx, called_name, args) -> args. Lets the app fill in parameters the model
+# must not choose (the signed-in user's ID, idempotency keys) before Anvil
+# sees them, so Anvil's checks run on the final values.
+ToolCallPreparer = Callable[[RunContext, str, dict], dict]
+
 
 class AnvilToolSource:
     """*anvil* is the Anvil instance to execute through. Pass *anvil_for* to
@@ -43,11 +48,13 @@ class AnvilToolSource:
         *,
         observer: ToolCallObserver | None = None,
         anvil_for: Callable[[RunContext], Anvil | None] | None = None,
+        prepare: ToolCallPreparer | None = None,
     ) -> None:
         self._anvil = anvil
         self._app = app
         self._observer = observer
         self._anvil_for = anvil_for
+        self._prepare = prepare
 
     def visible_tool_ids(self) -> list[str]:
         """The app's own tools plus tools granted to it, as canonical IDs."""
@@ -73,6 +80,8 @@ class AnvilToolSource:
         tool_id = resolve(name, self._app)
         anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
         try:
+            if self._prepare is not None:
+                args = dict(self._prepare(ctx, name, dict(args)))
             response = await anvil.execute(
                 agent_id=anvil_agent_id(ctx.agent_name, self._app, anvil.policy_engine.policy.agents),
                 tool_name=tool_id,

@@ -14,6 +14,7 @@
         model: gpt-5.4-mini
         tools: [get_accounts, notify.send_email]   # bare = own app
         sequences: [{before: initiate_transfer, requires: [get_accounts]}]
+        trust_overrides: {initiate_transfer: untrusted}
     flows:                       # qualified "app.flow"; a graph of registered agents
       ironclad.dispute_flow:
         entry: triage
@@ -59,12 +60,16 @@ class AgentDef(BaseModel):
 
     instructions: str
     prompt_version: str
+    description: str = ""
+    """What this agent's policy is for (shown in policy views)."""
     backend: Backend = "openai"
     model: str | None = None
     role: str = ""
     tools: list[str] = Field(default_factory=list)
     sequences: list[SequenceRule] = Field(default_factory=list)
     strictness: Literal["strict", "loose"] = "strict"
+    trust_overrides: dict[str, Literal["trusted", "untrusted"]] = Field(default_factory=dict)
+    """Per-tool trust for this agent (overrides the tool's own trust)."""
 
 
 class FlowNode(BaseModel):
@@ -213,6 +218,7 @@ def compile_config(platform: PlatformConfig) -> CompiledConfig:
             allowed_delegations=sorted(relative(d, app_of(aid)) for d in delegations[aid]),
             sequences=list(a.sequences),
             strictness=a.strictness,
+            trust_overrides=dict(a.trust_overrides),
         ).model_dump()
         for aid, a in platform.agents.items()
     }
