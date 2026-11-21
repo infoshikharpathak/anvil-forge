@@ -41,3 +41,38 @@ def test_migrate_command(db_url, monkeypatch, capsys):
 def test_database_passwords_are_not_printed():
     assert _safe_url("postgresql+psycopg://forge:s3cret@db:5432/af") == "postgresql+psycopg://forge:***@db:5432/af"
     assert _safe_url("sqlite:///./x.db") == "sqlite:///./x.db"
+
+
+def test_cleanup_traces_deletes_old_and_keeps_recent(db_url, monkeypatch, capsys, ana):
+    from datetime import datetime, timedelta, timezone
+
+    import pytest
+
+    from bastion_server.models import Trace
+
+    from .conftest import make_ironclad, post_traces, trace_record
+
+    client, app = ana
+    make_ironclad(client)
+    raw = client.post("/v1/apps/ironclad/keys", json={}).json()["key"]
+    now = datetime.now(timezone.utc)
+    old = [trace_record(started=now - timedelta(days=d)) for d in (31, 45, 400)]
+    recent = [trace_record(started=now - timedelta(days=d)) for d in (0, 29)]
+    assert post_traces(app, raw, old + recent).json()["accepted"] == 5
+    monkeypatch.setenv("DATABASE_URL", db_url)
+
+    assert main(["cleanup-traces", "--older-than", "30d", "--dry-run"]) == 0
+    assert "Would delete 3 traces" in capsys.readouterr().out
+    with app.state.sessionmaker() as db:
+        assert db.query(Trace).count() == 5
+
+    assert main(["cleanup-traces", "--older-than", "30d"]) == 0
+    assert "Deleted 3 traces started before" in capsys.readouterr().out
+    with app.state.sessionmaker() as db:
+        assert {t.trace_id for t in db.query(Trace)} == {r["trace_id"] for r in recent}
+
+    assert main(["cleanup-traces", "--older-than", "1"]) == 0  # plain number of days works too
+    assert "Deleted 1 trace " in capsys.readouterr().out
+    for bad in ("0d", "30x", "-3d", "thirty"):
+        with pytest.raises(SystemExit):
+            main(["cleanup-traces", "--older-than", bad])

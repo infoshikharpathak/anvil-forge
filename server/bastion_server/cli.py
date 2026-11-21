@@ -1,9 +1,10 @@
-"""bastion-server: serve, migrate, create-user."""
+"""bastion-server: serve, migrate, create-user, cleanup-traces."""
 
 from __future__ import annotations
 
 import argparse
 import getpass
+import re
 import sys
 
 from .settings import load_settings
@@ -53,6 +54,42 @@ def _create_user(args: argparse.Namespace) -> int:
     return 0
 
 
+def _days(value: str) -> int:
+    """'30d' or '30' -> 30."""
+    m = re.fullmatch(r"\s*(\d+)\s*d?\s*", value or "")
+    if not m or int(m.group(1)) < 1:
+        raise argparse.ArgumentTypeError(f"expected a number of days like 30d, got {value!r}")
+    return int(m.group(1))
+
+
+def _cleanup_traces(args: argparse.Namespace) -> int:
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import delete, func, select
+
+    from .db import make_engine, make_sessionmaker, migrate
+    from .models import Trace
+
+    settings = load_settings()
+    migrate(settings.database_url)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=args.older_than)
+    old = Trace.started_at < cutoff
+    engine = make_engine(settings.database_url)
+    try:
+        with make_sessionmaker(engine).begin() as db:
+            count = db.scalar(select(func.count(Trace.id)).where(old)) or 0
+            if not args.dry_run and count:
+                db.execute(delete(Trace).where(old))
+    finally:
+        engine.dispose()
+    when = cutoff.strftime("%Y-%m-%d %H:%M UTC")
+    if args.dry_run:
+        print(f"Would delete {count} trace{'' if count == 1 else 's'} started before {when}.")
+    else:
+        print(f"Deleted {count} trace{'' if count == 1 else 's'} started before {when}.")
+    return 0
+
+
 def _safe_url(url: str) -> str:
     """Hide a password in a database URL before printing it."""
     if "@" in url and "://" in url:
@@ -81,6 +118,12 @@ def main(argv: list[str] | None = None) -> int:
     cu.add_argument("--password-stdin", action="store_true",
                     help="read the password from stdin instead of prompting (for scripts)")
     cu.set_defaults(func=_create_user)
+
+    ct = sub.add_parser("cleanup-traces", help="delete traces older than N days (nothing is deleted automatically)")
+    ct.add_argument("--older-than", type=_days, required=True, metavar="Nd",
+                    help="age in days, e.g. 30d; traces that started before then are deleted")
+    ct.add_argument("--dry-run", action="store_true", help="only count what would be deleted")
+    ct.set_defaults(func=_cleanup_traces)
 
     args = parser.parse_args(argv)
     return args.func(args)
