@@ -1,8 +1,9 @@
 # bastion — Phase 4 spec
 
 > Renamed from anvil-forge to bastion on 2026-11-22 (packages bastion and
-> bastion-server). The GitHub repo is now infoshikharpathak/bastion; the
-> local folder still has the old name.
+> bastion-server). The GitHub repo is infoshikharpathak/bastion and the
+> folder is ~/Portfolio Projects/bastion. The original spec below keeps
+> the old names.
 
 New repo: ~/Portfolio Projects/anvil-forge (git init, GitHub repo created by me later)
 Layout: sdk/ (package bastion) and server/ (package bastion_server)
