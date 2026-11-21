@@ -259,7 +259,8 @@ class Platform:
             kind=kind, target=target, message=message,
         )
         self._collectors.start(collector)
-        return PlatformFactory(self.config, self.app, self._clients), tracer, collector
+        factory = PlatformFactory(self.config, self.app, self._clients, route=self._source.call)
+        return factory, tracer, collector
 
     async def _finish(self, run, *, outcome: str, error: str | None, output: str, framework: str) -> dict:
         """Persist the Agent Forge row, merge the trace and export it. Never raises."""

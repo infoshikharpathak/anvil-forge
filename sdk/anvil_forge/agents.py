@@ -65,16 +65,46 @@ class ClientProvider:
         return settings._DEFAULTS[provider]
 
 
+class GovernedHandlers(dict):
+    """An agent's tool handler table that never answers "unknown tool"
+    itself. Names it doesn't hold (an ungranted cross-app tool, or one the
+    model invented) are routed through *route*, i.e. Anvil, which returns a
+    correction and records the attempt."""
+
+    def __init__(self, handlers: dict, route) -> None:
+        super().__init__(handlers)
+        self._route = route
+
+    def get(self, name, default=None):  # backends look tools up with .get()
+        if name in self:
+            return self[name]
+        if self._route is None:
+            return default
+
+        async def routed(**kwargs):
+            from agent_forge.core.context import current_run_context
+
+            return await self._route(name, kwargs, current_run_context())
+
+        routed.__name__ = name
+        return routed
+
+
 class PlatformFactory(AgentFactory):
     """Agent Forge factory that builds registered agents from the platform
     config, ignoring whatever prompt/tools a caller (or planner) suggests:
     the config and the Anvil policy decide."""
 
-    def __init__(self, compiled: CompiledConfig, app: str, clients: ClientProvider) -> None:
+    def __init__(
+        self, compiled: CompiledConfig, app: str, clients: ClientProvider, *, route=None
+    ) -> None:
+        """*route* is ``AnvilToolSource.call``: where tool names the agent
+        has no handler for are sent (so Anvil sees every attempt)."""
         super().__init__()
         self._compiled = compiled
         self._app = app
         self._clients = clients
+        self._route = route
 
     def model_for(self, agent_id: str) -> str:
         spec = self._compiled.platform.agents[agent_id]
@@ -106,10 +136,10 @@ class PlatformFactory(AgentFactory):
         # records the violation, instead of the backend answering "unknown tool".
         offered = get_tools(self._compiled.agent_tools(agent_id))
         schemas = [to_openai_schema(fn) for fn in offered]
-        handlers = {
-            getattr(fn, "_tool_name", fn.__name__): fn
-            for fn in get_tools(self._compiled.visible_tools(self._app))
-        }
+        handlers = GovernedHandlers(
+            {getattr(fn, "_tool_name", fn.__name__): fn for fn in get_tools(self._compiled.visible_tools(self._app))},
+            self._route,
+        )
         common = dict(
             agent_id=str(uuid.uuid4()),
             name=agent_id,
