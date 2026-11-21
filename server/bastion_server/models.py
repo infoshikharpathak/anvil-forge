@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -64,6 +64,8 @@ class App(Base):
     auth: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     classifier: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # SDK dashboard options carried in the bundle ({include_content}). Never a URL or key.
+    dashboard: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(Timestamp, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(Timestamp, default=utcnow, onupdate=utcnow)
     __table_args__ = (UniqueConstraint("owner_id", "name", name="uq_apps_owner_name"),)
@@ -173,3 +175,46 @@ class AuditLog(Base):
     before: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     after: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Timestamp, default=utcnow, index=True)
+
+
+class Trace(Base):
+    """One agent or flow run, as the SDK's DashboardSink sends it: metadata
+    always, content (prompts, inputs, outputs, tool params) only when the
+    app opted in. The app's local trace file stays the full record."""
+
+    __tablename__ = "traces"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    app_id: Mapped[int] = mapped_column(ForeignKey("apps.id", ondelete="CASCADE"))
+    # Registered at ingest time. SET NULL keeps the history if the agent is deleted later.
+    agent_id: Mapped[int | None] = mapped_column(ForeignKey("agents.id", ondelete="SET NULL"), nullable=True)
+    agent_name: Mapped[str] = mapped_column(String(100))
+    flow_name: Mapped[str | None] = mapped_column(String(100), nullable=True)  # set for flow runs
+    app_key_id: Mapped[int | None] = mapped_column(ForeignKey("app_keys.id", ondelete="SET NULL"), nullable=True)
+    trace_id: Mapped[str] = mapped_column(String(36))
+    run_id: Mapped[str] = mapped_column(String(64))
+    session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    bundle_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(Timestamp)
+    ended_at: Mapped[datetime] = mapped_column(Timestamp)
+    duration_ms: Mapped[float] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(16))  # success | blocked | error
+    model: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    token_input: Mapped[int] = mapped_column(Integer, default=0)
+    token_output: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    tool_calls: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    steps: Mapped[list[Any]] = mapped_column(JSON, default=list)
+    # Per-agent rows, violations, scans and hook denial count (metadata only).
+    summary: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    content: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(Timestamp, default=utcnow)
+    __table_args__ = (
+        # A retried batch must not store a run twice.
+        UniqueConstraint("app_id", "run_id", name="uq_traces_app_run"),
+        Index("ix_traces_app_started", "app_id", "started_at"),
+        Index("ix_traces_app_trace", "app_id", "trace_id"),
+        Index("ix_traces_app_session", "app_id", "session_id"),
+        Index("ix_traces_app_agent_started", "app_id", "agent_name", "started_at"),
+        Index("ix_traces_key_received", "app_key_id", "received_at"),
+    )

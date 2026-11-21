@@ -108,3 +108,37 @@ def make_ironclad(client):
     assert client.post("/v1/apps", json={"name": "ironclad", "base_url": "http://bank.test"}).status_code == 201
     assert client.post("/v1/apps/ironclad/tools", json=TOOL).status_code == 201
     assert client.post("/v1/apps/ironclad/agents", json=AGENT).status_code == 201
+
+
+import uuid  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+
+def trace_record(**overrides):
+    """A DashboardSink record for ironclad.banking_agent (metadata only)."""
+    start = overrides.pop("started", None) or datetime.now(timezone.utc) - timedelta(seconds=2)
+    rec = {
+        "trace_id": str(uuid.uuid4()), "run_id": uuid.uuid4().hex, "app": "ironclad", "kind": "agent",
+        "agent": "ironclad.banking_agent", "session_id": None, "bundle_revision": 1, "prompt_version": "v1",
+        "started_at": start.isoformat(), "ended_at": (start + timedelta(milliseconds=1500)).isoformat(),
+        "duration_ms": 1500.0, "status": "success", "model": "gpt-4o-mini",
+        "token_input": 120, "token_output": 30, "cost_usd": 0.0001,
+        "tool_calls": [{"tool": "get_accounts", "tool_id": "ironclad.get_accounts", "app": "ironclad",
+                        "agent": "ironclad.banking_agent", "duration_ms": 40.0, "status": "allowed",
+                        "violation": None, "redacted_fields": []}],
+        "steps": [{"type": "agent_start", "agent": "ironclad.banking_agent", "offset_ms": 0},
+                  {"type": "tool_call", "agent": "ironclad.banking_agent", "tool": "get_accounts",
+                   "offset_ms": 300, "duration_ms": 40.0, "status": "allowed"},
+                  {"type": "agent_end", "agent": "ironclad.banking_agent", "offset_ms": 1500}],
+        "agents": [{"agent": "ironclad.banking_agent", "prompt_version": "v1", "model": "gpt-4o-mini",
+                    "status": "success", "input_tokens": 120, "output_tokens": 30, "latency_ms": 1400}],
+        "violations": [], "scans": [], "hook_denials": 0, "content": None,
+    }
+    rec.update(overrides)
+    return rec
+
+
+def post_traces(app, raw_key, batch):
+    from fastapi.testclient import TestClient
+
+    return TestClient(app).post("/v1/traces", json=batch, headers={"Authorization": f"Bearer {raw_key}"})

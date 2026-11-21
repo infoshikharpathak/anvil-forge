@@ -26,6 +26,9 @@ class Settings:
     auto_migrate: bool = field(default_factory=lambda: os.environ.get("BASTION_AUTO_MIGRATE", "1") == "1")
     # Behind a reverse proxy, take the client IP from X-Forwarded-For (for the login rate limit).
     trust_proxy: bool = field(default_factory=lambda: os.environ.get("BASTION_TRUST_PROXY", "") == "1")
+    # Trace ingestion: traces accepted per minute per app key, and the largest batch.
+    trace_rate_per_minute: int = field(default_factory=lambda: _int("BASTION_TRACE_RATE", 100))
+    trace_batch_max: int = field(default_factory=lambda: _int("BASTION_TRACE_BATCH_MAX", 100))
 
 
 def load_settings() -> Settings:

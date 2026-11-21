@@ -69,7 +69,7 @@ def _fill(path: str) -> str:
 
 
 def test_app_key_reaches_no_management_route(keyed):
-    """Every /v1 route except the SDK API and the public auth endpoints."""
+    """Every /v1 route except the SDK API, trace ingestion and the public auth endpoints."""
     _, app, raw = keyed
     from fastapi.testclient import TestClient
 
@@ -78,7 +78,7 @@ def test_app_key_reaches_no_management_route(keyed):
     checked = 0
     # The OpenAPI schema is the public list of every route and method.
     for path, ops in app.openapi()["paths"].items():
-        if not path.startswith("/v1/") or path.startswith("/v1/sdk"):
+        if not path.startswith("/v1/") or path.startswith("/v1/sdk") or path == "/v1/traces":
             continue
         if path in ("/v1/auth/login", "/v1/auth/signup", "/v1/auth/logout"):
             continue
