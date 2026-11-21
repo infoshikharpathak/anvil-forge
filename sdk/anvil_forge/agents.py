@@ -99,9 +99,17 @@ class PlatformFactory(AgentFactory):
     def _build(self, agent_id: str, spec: AgentDef) -> BaseAgent:
         from agent_forge.tools import get_tools, to_openai_schema
 
-        tool_fns = get_tools(self._compiled.agent_tools(agent_id))  # from the Anvil policy
-        handlers = {getattr(fn, "_tool_name", fn.__name__): fn for fn in tool_fns}
-        schemas = [to_openai_schema(fn) for fn in tool_fns]
+        # The model is offered only the tools the Anvil policy allows this
+        # agent. Every tool visible to the app has a handler, though, so a
+        # call outside the policy (hallucinated, or injected) still goes to
+        # Anvil, which returns its disallowed_tool correction to the model and
+        # records the violation, instead of the backend answering "unknown tool".
+        offered = get_tools(self._compiled.agent_tools(agent_id))
+        schemas = [to_openai_schema(fn) for fn in offered]
+        handlers = {
+            getattr(fn, "_tool_name", fn.__name__): fn
+            for fn in get_tools(self._compiled.visible_tools(self._app))
+        }
         common = dict(
             agent_id=str(uuid.uuid4()),
             name=agent_id,

@@ -136,6 +136,17 @@ class CompiledConfig:
         resolved = resolve_agent_policy(agent_id, policy)
         return [relative(t, app_of(agent_id)) for t in resolved.allowed_tools]
 
+    def visible_tool_ids(self, app: str) -> list[str]:
+        """Canonical IDs of the app's own tools plus tools granted to it."""
+        granted = {
+            g.tool for g in self.anvil.grants if g.tool is not None and app in g.to_apps
+        }
+        return [tid for tid, cfg in self.anvil.tools.items() if cfg.app == app or tid in granted]
+
+    def visible_tools(self, app: str) -> list[str]:
+        """The same tools, spelled the way the app's agents call them."""
+        return [relative(tid, app) for tid in self.visible_tool_ids(app)]
+
     def agents_of(self, app: str) -> dict[str, AgentDef]:
         return {aid: a for aid, a in self.platform.agents.items() if app_of(aid) == app}
 

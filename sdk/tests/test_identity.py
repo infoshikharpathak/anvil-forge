@@ -48,7 +48,9 @@ async def test_registered_agent_is_qualified_and_gets_policy_tools(env):
     factory = PlatformFactory(cfg, "ironclad", ClientProvider(anthropic=llm))
     agent = await factory.create(name="ironclad.resolver", system_message="planner text is ignored")
     assert agent.name == "ironclad.resolver"
-    assert [t["name"] for t in agent._tools] == ["notify__send_email"]
+    assert [t["name"] for t in agent._tools] == ["notify__send_email"]  # offered: policy only
+    # handlers: every tool the app can see, so off-policy calls still reach Anvil
+    assert set(agent._tool_handlers) == {"get_accounts", "initiate_transfer", "close_account", "notify__send_email"}
     assert agent._system_message == RESOLVER
 
     result = await execute_agent(agent, "resolve", agent.name, None, [AnvilHooks(anvil, "ironclad")])
