@@ -146,7 +146,8 @@ Decisions (4b as built):
 - SDK API (/v1/sdk, Authorization: Bearer bk_...): GET /v1/sdk/bundle
   returns {app, revision, etag, bundle} with an ETag header, and 304 on
   If-None-Match. App keys reach nothing else (management routes: 401), and
-  session cookies don't work on /v1/sdk. Trace upload is 4c.
+  session cookies don't work on /v1/sdk. Trace upload is 4c (POST
+  /v1/traces, the only other route an app key reaches).
 - Import/export: POST /v1/apps/{app}/import takes bastion YAML and
   replaces that app's tools, agents, flows, grants-to-it, settings and
   classifier. Other apps the YAML mentions must already exist under the
@@ -175,7 +176,8 @@ Decisions (4b as built):
   server/Dockerfile; a README section.
 
 ================ 4c: Dashboard & Trace Viewer ================
-(The spec as handed over. A "Decisions" list is added when 4c is built.)
+(The spec as handed over; "Decisions (4c as built)" at the end of this
+section records where the build fills gaps or differs.)
 
 The bastion server (from 4b) already has accounts, apps, the management
 API, and the UI for config. This phase adds trace ingestion and a dashboard
@@ -276,3 +278,72 @@ After 4c: run bastion-server serve, import the YAML, create a key, point
 the app at it with BASTION_URL and BASTION_KEY, and see every agent run,
 tool call and token count in the dashboard. Local trace files remain the
 full-detail record; the dashboard is the operational view.
+
+Decisions (4c as built):
+- Ingestion is per record. Each record in a batch is validated on its
+  own; the response is 202 {accepted, duplicates, rejected: [{index,
+  trace_id, error}]}, so one bad record doesn't cost the rest. A body that
+  isn't a list, or has more than 100 records (BASTION_TRACE_BATCH_MAX), is
+  a 422.
+- "agent must be registered" vs "agent_id nullable": every accepted trace
+  names a registered agent at ingest time. agent_id is nullable so that
+  deleting an agent later keeps its history (ON DELETE SET NULL);
+  agent_name is stored too. Agents the platform never registered (Agent
+  Forge's planner) can't be a run's top-level agent, so no ingest path for
+  them was needed. A cached bundle that still runs an agent the service
+  has since deleted will have those traces rejected (logged by the SDK).
+- Flow runs: the record has kind "flow", flow (validated) and agent = the
+  flow's entry agent, so every trace has an agent.
+- Idempotency: a record whose run_id the app already stored is skipped and
+  counted as a duplicate. trace_id is not unique (callers may reuse one
+  across runs); the detail page lists every run under a trace_id.
+- Rate limit: 100 traces/minute per key (BASTION_TRACE_RATE), counted
+  from stored rows (received_at), so it holds across processes. A batch
+  that would go over is refused whole with 429 and a Retry-After for when
+  it fits. Rejected and duplicate records don't count. Two concurrent
+  requests can overshoot slightly; acceptable for a soft limit.
+- Extra columns beyond the list: flow_name, app_key_id, run_id,
+  prompt_version, duration_ms, cost_usd, received_at, and summary (JSON:
+  per-agent rows, violations, scans, hook denial count).
+- Status: success; blocked if the run's outcome was blocked or withheld,
+  or any hook denied; error if it failed. A run whose tool calls were
+  blocked but which answered anyway is success (with violations shown).
+- Steps: the SDK now records them with timings (offset_ms from the run's
+  start, duration_ms where it applies): agent_start / agent_end from the
+  trace hooks, tool_call / tool_result around each Anvil call, handoff from
+  on_handoff. An agent that never reached after_agent_run (blocked input,
+  exception) gets an agent_end at start + its Agent Forge latency.
+- Scans: the LLM classifier now reports its verdict and pattern with its
+  usage. Regex scans aren't reported by Anvil, so injection verdicts also
+  come from injection_detected_* violations, with the pattern parsed from
+  Anvil's correction message.
+- Content (opt-in) is redacted in the SDK before it leaves: keys that look
+  secret (password, secret, token, api key, authorization, cookie, otp,
+  pin, cvv, ssn) at any depth, plus each tool's redact_fields, become
+  "[redacted]". Content over 256 KB per record is rejected.
+- include_content for remote mode lives on the service: apps.dashboard
+  ({include_content}) is part of the bundle, settable by create, PATCH and
+  import, and the SDK follows it (also on refresh) unless
+  Platform.from_service(include_content=...) is given. The service never
+  stores a URL or key: import rejects dashboard.key and drops url and the
+  SDK-local flush_interval / batch_size.
+- Library mode adds a DashboardSink when the YAML has a dashboard section
+  (url/key from it, else BASTION_URL / BASTION_KEY), or when both env vars
+  are set. dashboard=False or an explicit sinks= turns it off.
+- DashboardSink: export() only queues; a background task flushes every
+  flush_interval, or early when a full batch is queued (size-triggered
+  flushes send only full batches; the timer and close() send everything).
+  Order is kept across retries. 422 and other 4xx drop that batch (it can
+  never succeed); 401/403 disable the sink. Platform.close() flushes it.
+- UI: an app's landing page from the apps list is its dashboard; Config is
+  a tab next to Dashboard and Traces. /ui/dashboard is a new nav item with
+  a 7/30/90-day window. Counts and sums are SQL; hourly/daily buckets are
+  computed in Python from the window's rows, so queries are the same on
+  SQLite and Postgres. All times are UTC (Postgres may hand back another
+  zone; the server converts).
+- The bundle_revision link goes to the prompt version that revision's
+  stored bundle names for the agent (anchor on the app's Config page),
+  falling back to the label the SDK reported.
+- cleanup-traces deletes by started_at across all apps in the database,
+  with --dry-run; "30d" and "30" both work.
+

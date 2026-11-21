@@ -2,7 +2,7 @@
 
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
-Status: **4a (SDK) and 4b (control plane) are built**; the dashboard (4c) is next. See [docs/SPEC.md](docs/SPEC.md).
+Status: **4a (SDK), 4b (control plane) and 4c (dashboard and trace viewer) are built.** See [docs/SPEC.md](docs/SPEC.md).
 
 ## Quickstart
 
@@ -57,7 +57,7 @@ That run is checked by Anvil at every step: the input, each tool call, and the o
 - **Injection classifier.** Anvil gets an LLM classifier on the agents' own provider and keys (hybrid mode: regex first). Its tokens and cost are part of each run's trace.
 - **Combined trace.** One record per run merges Agent Forge's run row, Anvil's call records and what the platform saw. It includes, per agent, the prompt version, model, tokens, cost and latency, plus every tool call, violation, hook denial and scan.
   - `LocalSink` (default) keeps full detail: prompts, inputs, outputs and tool params.
-  - `DashboardSink` is an interface for 4c: metadata only by default.
+  - `DashboardSink` sends a copy to the bastion service's dashboard (see [Dashboard](#dashboard)). Metadata only unless you opt in to content.
   - Exporting never blocks or fails a run.
 
 ```python
@@ -83,7 +83,7 @@ platform = Platform.from_service("https://bastion.example.com", api_key=os.envir
 - **The app comes from the key.** The bundle is fetched at startup and cached on disk (`~/.cache/bastion`, or `cache_dir=`). The cache holds the bundle and its revision, never the key, and the bundle only names env vars.
 - **If the service is down at startup**, the platform runs on the cached bundle. With no cache, it fails with an error naming the URL and the cache path. A rejected key always fails.
 - **Updates.** After `start()`, the platform polls every `refresh_interval` seconds (default 30, using the ETag, so an unchanged bundle costs a 304). A new revision is compiled and swapped in: runs in progress finish on the config they started with, new runs use the new one, and tools are re-registered. An open `session_id` moves over on its next turn, keeping its conversation and sequence state, so an edited prompt applies mid-chat without a restart. `await platform.refresh()` checks immediately.
-- **Traces** record `bundle_revision`, so you can tell which published version a run used.
+- **Traces** record `bundle_revision`, so you can tell which published version a run used, and go to the service's dashboard as well as the local file (`dashboard=False` turns that off).
 
 ## Control plane (`server/`)
 
@@ -101,10 +101,10 @@ To connect an app:
 2. Create an app key. It's shown once.
 3. Run the app with `Platform.from_service("http://localhost:8200", api_key)`.
 
-Prompt edits in the UI reach running apps on their next refresh. Rollback is one click.
+Prompt edits in the UI reach running apps on their next refresh. Rollback is one click. Every run then shows up in the app's dashboard.
 
 - **Accounts:** argon2 passwords. Sessions live in the database, in an HttpOnly, SameSite=Strict cookie. Every write needs the `X-Bastion: 1` header. Logins are rate-limited per email and per IP. Sign-up is off unless `BASTION_SIGNUP=open`.
-- **App keys:** `bk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle`.
+- **App keys:** `bk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle` and `POST /v1/traces`, for their own app.
 - **Docker:** `docker build -f server/Dockerfile -t bastion-server .`, then `docker run -p 8200:8200 -v bastion-data:/data bastion-server`. Create the first user with `docker exec -it <container> bastion-server create-user --email you@example.com`. Behind TLS, set `BASTION_SECURE_COOKIES=1`.
 
 | Variable | Default | |
@@ -115,6 +115,32 @@ Prompt edits in the UI reach running apps on their next refresh. Rollback is one
 | `BASTION_SECURE_COOKIES` | off | `1` behind HTTPS |
 | `BASTION_TRUST_PROXY` | off | `1` to rate-limit by `X-Forwarded-For` behind a proxy |
 | `BASTION_AUTO_MIGRATE` | `1` | `0` to run `bastion-server migrate` yourself |
+| `BASTION_TRACE_RATE` | `100` | traces accepted per minute per app key |
+| `BASTION_TRACE_BATCH_MAX` | `100` | most traces in one `POST /v1/traces` |
+
+## Dashboard
+
+Apps report every run to the service, and the UI shows them:
+
+- **`/ui/dashboard`**: all your apps. Traces, tokens and estimated cost over 7, 30 or 90 days, tokens by app, by model and by day, and recent traces across apps.
+- **`/ui/apps/<app>/dashboard`** (an app's landing page): today's traces by status and tokens, traces per hour over 7 days, agents by trace count with average response time, and recent blocked traces.
+- **`/ui/apps/<app>/traces`**: every run, filterable by agent, status, session and date, 50 per page.
+- **A trace**: its bundle revision and the prompt version that revision ran, a step timeline (agent start/end, tool call/result, handoff) with timing bars, tool calls with status and redacted fields, injection scan verdicts, violations, and the content if it was sent.
+- **A session**: every turn of a `session_id` in order, as a conversation when content was sent.
+
+Remote mode reports automatically. In library mode, add a `dashboard` section, or set `BASTION_URL` and `BASTION_KEY`:
+
+```yaml
+dashboard:
+  include_content: false   # the default: metadata only
+  # url: and key: default to BASTION_URL and BASTION_KEY; prefer the env vars to a key in the file
+```
+
+- **Metadata only by default:** IDs, agents, prompt versions, models, tokens, cost, timings, tool names and statuses, violation types and scan verdicts. With `include_content: true`, prompts, inputs, outputs and tool params and responses are sent too, with secret-looking fields (password, token, key, otp, pin, ...) and each tool's `redact_fields` replaced by `[redacted]`. For a remote-mode app, set it on the service (`PATCH /v1/apps/<app>` with `{"dashboard": {"include_content": true}}`, or in the imported YAML); `Platform.from_service(..., include_content=False)` overrides it in code.
+- **Delivery:** `DashboardSink` queues each trace and posts batches of 20 every 5 seconds in the background. If the service is down, it keeps up to 500 traces and retries; past that it drops the oldest, with a warning. On 429 it waits for `Retry-After`. A rejected key (401/403) stops it, once, with an error. `await platform.close()` sends what's left.
+- **What the service checks:** the record's app must be the key's app, the agent (and flow) must be registered, and `trace_id` must be a UUID. The SDK's default trace IDs are UUIDs; a `trace_id=` you pass yourself must be one too, or the service rejects that trace (the local copy is unaffected). Records with a `run_id` already stored are skipped, so a retried batch isn't stored twice. Each key may send 100 traces a minute.
+- **Retention:** nothing is deleted automatically. `bastion-server cleanup-traces --older-than 30d` deletes traces that started more than 30 days ago (`--dry-run` counts them first).
+- The local trace file is still the full record. The dashboard is the operational view.
 
 ## Config reference
 
@@ -126,6 +152,7 @@ Prompt edits in the UI reach running apps on their next refresh. Rollback is one
 | `grants` | `{tool: notify.send_email, to_apps: [ironclad]}` |
 | `settings` | Passed to Anvil (for example `injection_scanning`) |
 | `classifier` | `enabled` (default true), `provider`, `model` |
+| `dashboard` | optional: `include_content` (default false), `url`, `key` (default to `BASTION_URL` / `BASTION_KEY`), `flush_interval` (5), `batch_size` (20) |
 
 ## Things to know
 
