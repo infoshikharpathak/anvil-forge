@@ -16,6 +16,8 @@ from typing import TYPE_CHECKING
 
 from agent_forge.core.hooks import AgentHooks, HookDecision
 
+from .agents import anvil_agent_id
+
 if TYPE_CHECKING:
     from agent_forge.core.context import RunContext
     from anvil import Anvil
@@ -33,18 +35,30 @@ def _decision(result: AgentCheckResult) -> HookDecision:
 
 
 class AnvilHooks(AgentHooks):
-    def __init__(self, anvil: Anvil) -> None:
+    def __init__(self, anvil: Anvil, app: str) -> None:
         self._anvil = anvil
+        self._app = app
+
+    def _id(self, name: str | None) -> str:
+        # Unregistered (e.g. planner-spawned) agents get an ID Anvil can never
+        # match, so they hit the unknown_agent hard block. See agents.py.
+        return anvil_agent_id(name, self._app, self._anvil.policy_engine.policy.agents)
 
     async def before_agent_run(self, ctx: RunContext, task: str) -> HookDecision:
-        return _decision(await self._anvil.check_agent_input(ctx.agent_name or "", task, trace_id=ctx.trace_id))
+        return _decision(
+            await self._anvil.check_agent_input(self._id(ctx.agent_name), task, trace_id=ctx.trace_id)
+        )
 
     async def after_agent_run(self, ctx: RunContext, output: str) -> HookDecision:
-        return _decision(await self._anvil.check_agent_output(ctx.agent_name or "", output, trace_id=ctx.trace_id))
+        return _decision(
+            await self._anvil.check_agent_output(self._id(ctx.agent_name), output, trace_id=ctx.trace_id)
+        )
 
     async def on_handoff(
         self, ctx: RunContext, from_agent: str, to_agent: str, payload: str
     ) -> HookDecision:
         return _decision(
-            await self._anvil.check_handoff(from_agent, to_agent, payload, trace_id=ctx.trace_id)
+            await self._anvil.check_handoff(
+                self._id(from_agent), self._id(to_agent), payload, trace_id=ctx.trace_id
+            )
         )

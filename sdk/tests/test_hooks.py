@@ -14,7 +14,7 @@ from .conftest import base_config
 def hooks():
     cfg = load_config(base_config())
     anvil = Anvil(cfg.anvil, POLICY_NAME, app="ironclad", session_id="s")
-    return anvil, AnvilHooks(anvil)
+    return anvil, AnvilHooks(anvil, "ironclad")
 
 
 def ctx(agent="ironclad.triage", trace="T-h"):

@@ -18,6 +18,8 @@ from agent_forge.core.context import RunContext
 from agent_forge.tools.sources import ToolSpec
 from anvil.namespaces import relative, resolve
 
+from .agents import anvil_agent_id
+
 if TYPE_CHECKING:
     from anvil import Anvil
 
@@ -59,7 +61,7 @@ class AnvilToolSource:
         tool_id = resolve(name, self._app)
         try:
             response = await self._anvil.execute(
-                agent_id=ctx.agent_name or "",
+                agent_id=anvil_agent_id(ctx.agent_name, self._app, self._anvil.policy_engine.policy.agents),
                 tool_name=tool_id,
                 params=args,
                 trace_id=ctx.trace_id,
