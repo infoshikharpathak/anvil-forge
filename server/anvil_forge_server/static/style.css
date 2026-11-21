@@ -1,0 +1,48 @@
+/* anvil-forge control plane: one sans for UI, one mono for IDs/keys/YAML. */
+:root {
+  --bg: #f4f5f7; --surface: #fff; --ink: #1b222c; --muted: #5d6877; --rule: #dde1e7;
+  --accent: #3550c8; --accent-soft: #e8ecfa; --danger: #b42318; --ok: #1f7a4d; --code: #eef1f5;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #11161d; --surface: #182029; --ink: #e3e8ee; --muted: #98a4b3; --rule: #2a3442;
+    --accent: #8ea6ff; --accent-soft: #1f2a46; --danger: #ff8a7a; --ok: #6fd3a0; --code: #0d1218; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 var(--font); }
+a { color: var(--accent); }
+header.bar { display: flex; gap: 20px; align-items: center; padding: 12px max(16px, 4vw); background: var(--surface); border-bottom: 1px solid var(--rule); flex-wrap: wrap; }
+header.bar .brand { font-weight: 700; letter-spacing: .01em; text-decoration: none; color: var(--ink); }
+header.bar nav { display: flex; gap: 14px; flex-wrap: wrap; }
+header.bar nav a { text-decoration: none; color: var(--muted); font-weight: 500; }
+header.bar nav a.on { color: var(--ink); }
+header.bar .who { margin-left: auto; color: var(--muted); font-size: 13px; display: flex; gap: 10px; align-items: center; }
+main { max-width: 1040px; margin: 0 auto; padding: 24px max(16px, 4vw) 64px; }
+h1 { font-size: 24px; margin: 0 0 4px; } h2 { font-size: 18px; margin: 28px 0 10px; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.scroll { overflow-x: auto; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+code, .mono { font-family: var(--mono); font-size: 13px; }
+code { background: var(--code); padding: 1px 5px; border-radius: 4px; }
+pre { font-family: var(--mono); font-size: 12.5px; background: var(--code); padding: 10px; border-radius: 6px; white-space: pre-wrap; margin: 6px 0; }
+input, textarea, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px; width: 100%; }
+textarea { font-family: var(--mono); font-size: 13px; min-height: 120px; }
+label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+button { font: inherit; font-weight: 500; border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button.ghost { background: transparent; color: var(--accent); }
+button.danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.pill.off { background: var(--code); color: var(--muted); }
+.msg { font-size: 14px; min-height: 1.2em; }
+.msg.err { color: var(--danger); white-space: pre-wrap; } .msg.ok { color: var(--ok); }
+.key-once { border: 1px dashed var(--ok); padding: 10px; border-radius: 6px; margin-top: 10px; word-break: break-all; }
+.tabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 16px; }
+.tabs a { text-decoration: none; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--rule); color: var(--muted); background: var(--surface); font-size: 13px; }
+details summary { cursor: pointer; color: var(--accent); }
+.auth-box { max-width: 380px; margin: 8vh auto; }

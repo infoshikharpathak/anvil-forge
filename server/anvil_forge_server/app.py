@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 
 from .db import make_engine, make_sessionmaker, migrate
@@ -22,7 +24,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from fastapi import Request
     from fastapi.responses import JSONResponse
 
-    from .routes import auth, keys, manage, portable, sdk
+    from fastapi.staticfiles import StaticFiles
+
+    from .routes import auth, keys, manage, portable, sdk, ui
     from .workspace import ChangeRejected, NotFound
 
     app.include_router(auth.router)
@@ -30,6 +34,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(keys.router)
     app.include_router(sdk.router)
     app.include_router(portable.router)
+    app.include_router(ui.router)
+    app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
 
     @app.exception_handler(NotFound)
     def _not_found(_req: Request, exc: NotFound):

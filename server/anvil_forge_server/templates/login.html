@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Log in · anvil-forge{% endblock %}
+{% block content %}
+<div class="auth-box panel">
+  <h1>Log in</h1>
+  <p class="sub">The anvil-forge control plane.</p>
+  <form data-api="POST /v1/auth/login" data-then="{{ next or '/ui' }}">
+    <label>Email <input id="email" name="email" type="email" autocomplete="username" required></label>
+    <label>Password <input id="password" name="password" type="password" autocomplete="current-password" required></label>
+    <div class="row"><button type="submit">Log in</button>
+      {% if signup_open %}<a href="/ui/signup">Create an account</a>{% endif %}</div>
+    <p class="msg"></p>
+  </form>
+</div>
+{% endblock %}
