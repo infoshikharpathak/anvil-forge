@@ -24,6 +24,8 @@ class Settings:
     # Cookies get Secure when the service is reached over https (set for deploys behind TLS).
     secure_cookies: bool = field(default_factory=lambda: os.environ.get("ANVIL_FORGE_SECURE_COOKIES", "") == "1")
     auto_migrate: bool = field(default_factory=lambda: os.environ.get("ANVIL_FORGE_AUTO_MIGRATE", "1") == "1")
+    # Behind a reverse proxy, take the client IP from X-Forwarded-For (for the login rate limit).
+    trust_proxy: bool = field(default_factory=lambda: os.environ.get("ANVIL_FORGE_TRUST_PROXY", "") == "1")
 
 
 def load_settings() -> Settings:

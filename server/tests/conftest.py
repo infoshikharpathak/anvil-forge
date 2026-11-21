@@ -37,3 +37,43 @@ def migrated(db_url):
     engine = make_engine(db_url)
     yield engine, make_sessionmaker(engine)
     engine.dispose()
+
+
+from dataclasses import replace  # noqa: E402
+
+from fastapi.testclient import TestClient  # noqa: E402
+
+CSRF = {"X-Anvil-Forge": "1"}
+PASSWORD = "correct horse battery"
+
+
+@pytest.fixture
+def make_client(db_url):
+    """make_client(**settings) -> (TestClient, app). Each call is a separate browser."""
+    from anvil_forge_server.app import create_app
+    from anvil_forge_server.settings import Settings
+
+    apps = {}
+
+    def _make(**overrides):
+        key = tuple(sorted(overrides.items()))
+        if key not in apps:
+            apps[key] = create_app(replace(Settings(), database_url=db_url, **overrides))
+        return TestClient(apps[key]), apps[key]
+
+    yield _make
+    for app in apps.values():
+        app.state.engine.dispose()
+
+
+def add_user(app, email="ana@example.com", password=PASSWORD):
+    from anvil_forge_server.accounts import create_user
+
+    with app.state.sessionmaker.begin() as db:
+        return create_user(db, email, password).id
+
+
+def login(client, email="ana@example.com", password=PASSWORD):
+    resp = client.post("/v1/auth/login", json={"email": email, "password": password}, headers=CSRF)
+    assert resp.status_code == 200, resp.text
+    return resp
