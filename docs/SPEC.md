@@ -174,12 +174,105 @@ Decisions (4b as built):
 - Deploy: `bastion-server serve` (uvicorn), `create-user`, `migrate`;
   server/Dockerfile; a README section.
 
-================ 4c: Dashboard (later) ================
-- POST /traces (app key): write-only, own app only.
-- DashboardSink in the SDK: batched, async, local fallback file when the
-  service is unreachable, retried later.
-- Views: runs across apps and per agent, violations per agent, tokens and cost
-  by app / agent / model / prompt version over time, and comparison of two
-  prompt versions of one agent. Every row shows trace_id so the app team can
-  find full detail in their local trace.
-- Content never shown unless the app opted in.
+================ 4c: Dashboard & Trace Viewer ================
+(The spec as handed over. A "Decisions" list is added when 4c is built.)
+
+The bastion server (from 4b) already has accounts, apps, the management
+API, and the UI for config. This phase adds trace ingestion and a dashboard
+to view them.
+
+What exists today:
+- The SDK's DashboardSink is defined but has no server endpoint to POST to.
+- Traces have two copies by design: a local copy with full detail (the app
+  keeps this), and a dashboard copy with metadata only, content opt-in.
+- LocalSink writes JSON files to disk. DashboardSink is a stub.
+- Each trace already records app, agent, trace_id, session_id,
+  bundle_revision, tool calls, timings, and token counts.
+
+Build these, in order:
+
+1. Trace ingestion endpoint: POST /v1/traces (app-key auth, same bk_ keys).
+   - Accepts a batch of trace records (list of JSON objects).
+   - Validates: app must match the key's app, agent must be registered,
+     trace_id is a UUID.
+   - Stores in a traces table: id, app_id, agent_id (nullable for
+     unregistered), trace_id, session_id, bundle_revision, started_at,
+     ended_at, status (success/blocked/error), token_input, token_output,
+     model, tool_calls (JSON), steps (JSON, the metadata-only version),
+     content (JSON, nullable, only when the app opts in via
+     include_content: true in the SDK config).
+   - Add an Alembic migration for the table.
+   - Response: 202 Accepted with {"accepted": N}.
+   - Rate limit: 100 traces per minute per app key (429 with Retry-After).
+
+2. Wire DashboardSink in the SDK (sdk/bastion/trace.py):
+   - DashboardSink.__init__(self, url, api_key, *, include_content=False,
+     flush_interval=5.0, batch_size=20)
+   - Collects traces in a buffer, flushes every flush_interval seconds or
+     when batch_size is reached (whichever comes first).
+   - POST to {url}/v1/traces with Authorization: Bearer bk_...
+   - On 429: back off using Retry-After.
+   - On network error or 5xx: buffer locally (up to 500 traces), retry on
+     next flush. Drop oldest if the buffer overflows, log a warning.
+   - On 401/403: log once, stop retrying (key is bad).
+   - include_content controls whether prompt/response text is sent.
+     Default false (metadata only).
+   - async close() flushes the remaining buffer.
+   - Platform.from_service automatically creates a DashboardSink alongside
+     the LocalSink.
+   - Platform.from_config (library mode) can also add a DashboardSink if
+     the YAML has dashboard: { url: ..., key: ..., include_content: false }.
+
+3. Dashboard UI pages (server-side rendered, same pattern as 4b's UI):
+   a. Traces list (/ui/apps/{app}/traces): timestamp, agent, session_id
+      (truncated), status (color-coded badge), model, tokens (in+out),
+      duration_ms. Filterable by agent, status, session_id, date range.
+      Paginated, 50 per page, newest first.
+   b. Trace detail (/ui/apps/{app}/traces/{trace_id}):
+      - Header: trace_id, agent, session_id, bundle_revision (links to the
+        prompt version it ran on), model, timestamps, duration, tokens.
+      - Steps timeline: each step (agent_start, tool_call, tool_result,
+        handoff, agent_end) with timing bars.
+      - Tool calls: tool name, app (if cross-app), duration, status
+        (allowed/blocked/redacted fields).
+      - Content panel (only if content was sent): prompt and responses,
+        collapsible.
+      - Injection scan results: if a scan fired, the verdict and matched
+        pattern.
+   c. Session view (/ui/apps/{app}/sessions/{session_id}): all traces in a
+      session, in order, showing the multi-turn conversation flow.
+   d. Overview dashboard (/ui/apps/{app}/dashboard), the app's landing page:
+      - Today's numbers: total traces, success/blocked/error counts, tokens.
+      - Traces over time: line chart, last 7 days, bucketed by hour. Inline
+        SVG, no JS charting library.
+      - Top agents by trace count.
+      - Recent blocked traces (last 10).
+      - Avg response time by agent.
+
+4. Cross-app tracing: /ui/dashboard (no app scope):
+   - All apps the logged-in user owns.
+   - Aggregate token usage across apps.
+   - Recent traces across all apps.
+   - The "tokenomics" view: total tokens by app, by model, by day.
+
+5. Trace cleanup: bastion-server cleanup-traces --older-than 30d deletes
+   traces older than N days. No automatic cleanup (the user decides).
+
+Config: the SDK YAML gains an optional dashboard section
+(include_content: false by default). URL and key come from BASTION_URL and
+BASTION_KEY (same as remote mode); if those are set, the dashboard sink is
+active. Library mode without env vars can give explicit url and key.
+
+Tests: ingestion (valid batch, app mismatch, unregistered agent, rate
+limit, auth failures); DashboardSink (batching, flush on interval, flush on
+size, retry on 5xx, drop on overflow, stop on 401); each dashboard page
+renders (200, right template); cross-app dashboard shows only the user's
+apps; cleanup deletes old traces and keeps recent ones.
+
+Not included: real-time streaming/WebSockets (polling is fine), alerting,
+CSV/JSON export, GitHub login.
+
+After 4c: run bastion-server serve, import the YAML, create a key, point
+the app at it with BASTION_URL and BASTION_KEY, and see every agent run,
+tool call and token count in the dashboard. Local trace files remain the
+full-detail record; the dashboard is the operational view.
