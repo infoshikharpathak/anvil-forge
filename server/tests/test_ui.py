@@ -75,3 +75,26 @@ def test_static_assets_served(make_client):
     client, _ = make_client()
     assert client.get("/static/app.js").status_code == 200
     assert client.get("/static/style.css").status_code == 200
+
+
+def test_template_yaml_downloads_compiles_and_imports(ana):
+    import yaml
+    from bastion import load_config
+
+    client, _ = ana
+    page = client.get("/ui").text
+    assert 'href="/static/bastion.template.yaml" download="bastion.yaml"' in page and "Download template" in page
+
+    r = client.get("/static/bastion.template.yaml")
+    assert r.status_code == 200
+    doc = yaml.safe_load(r.text)
+    compiled = load_config(doc)  # a valid config as shipped
+    assert set(compiled.platform.agents) == {"shop.support_agent", "shop.refund_reviewer"}
+    assert "key" not in (doc.get("dashboard") or {})  # never a secret in the template
+
+    imported = client.post("/v1/apps/shop/import", content=r.text, headers={"Content-Type": "application/yaml"})
+    assert imported.status_code == 200, imported.text
+    bundle = client.get("/v1/apps/shop/bundle").json()["bundle"]
+    assert set(bundle["apps"]["shop"]["tools"]) == {"get_order", "list_orders", "refund_order"}
+    assert set(bundle["flows"]) == {"shop.refund_flow"}
+    assert bundle["dashboard"] == {"include_content": False}
