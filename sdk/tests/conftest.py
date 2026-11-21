@@ -3,6 +3,8 @@ import os
 
 import pytest
 
+# Dummy keys let SDK clients be constructed; stubbed tests never call out.
+# A real OPENAI_API_KEY in the environment enables the live smoke test.
 os.environ.setdefault("OPENAI_API_KEY", "dummy-key-for-tests")
 os.environ.setdefault("ANTHROPIC_API_KEY", "dummy-key-for-tests")
 
