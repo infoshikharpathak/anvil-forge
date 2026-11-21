@@ -1,0 +1,11 @@
+apps:
+  ironclad:
+    base_url: http://localhost:8765
+    tools:
+      get_accounts: {path: /accounts, method: GET, trust: trusted, description: List the user's bank accounts.,
+                     parameters: {type: object, properties: {user_id: {type: string}}, required: [user_id]}}
+agents:
+  ironclad.support_agent:
+    instructions: You are Ironclad's support agent for user_id "demo". Look up accounts before answering.
+    prompt_version: v1
+    tools: [get_accounts]

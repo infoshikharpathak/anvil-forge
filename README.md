@@ -6,26 +6,33 @@ Status: **Phase 4a (SDK, local mode)**. The control plane (4b) and dashboard (4c
 
 ## Quickstart
 
+Everything is in [`examples/quickstart/`](examples/quickstart/), including a stand-in bank API, so it runs on a clean machine:
+
 ```bash
-pip install -e sdk          # pulls anvil-ai and agent-forge from GitHub (pinned commits)
-export OPENAI_API_KEY=...   # agents and the injection classifier use the same key
+pip install -e sdk                # pulls anvil-ai and agent-forge from GitHub (pinned commits)
+export OPENAI_API_KEY=...         # agents and the injection classifier use the same key
+cd examples/quickstart
+python fake_bank.py &             # start this first: a fake bank API on localhost:8765
+python quickstart.py
 ```
 
-Save as `anvil-forge.yaml`:
+`anvil-forge.yaml`:
 
 ```yaml
 apps:
   ironclad:
-    base_url: http://localhost:8001
+    base_url: http://localhost:8765
     tools:
-      get_accounts: {path: /accounts, method: GET, trust: trusted,
+      get_accounts: {path: /accounts, method: GET, trust: trusted, description: List the user's bank accounts.,
                      parameters: {type: object, properties: {user_id: {type: string}}, required: [user_id]}}
 agents:
   ironclad.support_agent:
-    instructions: You are Ironclad's support agent. Look up accounts before answering.
+    instructions: You are Ironclad's support agent for user_id "demo". Look up accounts before answering.
     prompt_version: v1
     tools: [get_accounts]
 ```
+
+`quickstart.py`:
 
 ```python
 import asyncio
