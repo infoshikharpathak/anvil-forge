@@ -1,4 +1,4 @@
-# anvil-forge
+# bastion
 
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
@@ -16,7 +16,7 @@ python fake_bank.py &             # start this first: a fake bank API on localho
 python quickstart.py
 ```
 
-`anvil-forge.yaml`:
+`bastion.yaml`:
 
 ```yaml
 apps:
@@ -36,17 +36,17 @@ agents:
 
 ```python
 import asyncio
-from anvil_forge import Platform
+from bastion import Platform
 
 async def main():
-    platform = Platform.from_config("anvil-forge.yaml", app="ironclad")
+    platform = Platform.from_config("bastion.yaml", app="ironclad")
     reply = await platform.run_agent("support_agent", "What accounts do I have?")
     print(reply.content, reply.status, reply.trace_id)
 
 asyncio.run(main())
 ```
 
-That run is checked by Anvil at every step: the input, each tool call, and the output. It is executed by Agent Forge, and its full trace is appended to `./anvil_forge_traces.jsonl`.
+That run is checked by Anvil at every step: the input, each tool call, and the output. It is executed by Agent Forge, and its full trace is appended to `./bastion_traces.jsonl`.
 
 ## What you get
 
@@ -74,47 +74,47 @@ platform.describe_agent("support_agent")             # effective policy: tools +
 
 ## Remote mode
 
-Instead of a local YAML file, an app can run on what the anvil-forge control plane (`server/`) publishes for it:
+Instead of a local YAML file, an app can run on what the bastion control plane (`server/`) publishes for it:
 
 ```python
-platform = Platform.from_service("https://forge.example.com", api_key=os.environ["ANVIL_FORGE_KEY"])
+platform = Platform.from_service("https://bastion.example.com", api_key=os.environ["BASTION_KEY"])
 ```
 
-- **The app comes from the key.** The bundle is fetched at startup and cached on disk (`~/.cache/anvil-forge`, or `cache_dir=`). The cache holds the bundle and its revision, never the key, and the bundle only names env vars.
+- **The app comes from the key.** The bundle is fetched at startup and cached on disk (`~/.cache/bastion`, or `cache_dir=`). The cache holds the bundle and its revision, never the key, and the bundle only names env vars.
 - **If the service is down at startup**, the platform runs on the cached bundle. With no cache, it fails with an error naming the URL and the cache path. A rejected key always fails.
 - **Updates.** After `start()`, the platform polls every `refresh_interval` seconds (default 30, using the ETag, so an unchanged bundle costs a 304). A new revision is compiled and swapped in: runs in progress finish on the config they started with, new runs use the new one, and tools are re-registered. An open `session_id` moves over on its next turn, keeping its conversation and sequence state, so an edited prompt applies mid-chat without a restart. `await platform.refresh()` checks immediately.
 - **Traces** record `bundle_revision`, so you can tell which published version a run used.
 
 ## Control plane (`server/`)
 
-`anvil-forge-server` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
+`bastion-server` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
 
 ```bash
 pip install -e sdk -e "server[postgres]"
-export DATABASE_URL=sqlite:///./anvil_forge_server.db   # default; or postgresql+psycopg://user:pass@host/db
-anvil-forge-server create-user --email you@example.com  # the first account (prompts for a password)
-anvil-forge-server serve --port 8200                     # migrates, then serves http://localhost:8200/ui
+export DATABASE_URL=sqlite:///./bastion_server.db   # default; or postgresql+psycopg://user:pass@host/db
+bastion-server create-user --email you@example.com  # the first account (prompts for a password)
+bastion-server serve --port 8200                     # migrates, then serves http://localhost:8200/ui
 ```
 
 To connect an app:
-1. Sign in, then import its `anvil-forge.yaml` (or build it in the UI or API).
+1. Sign in, then import its `bastion.yaml` (or build it in the UI or API).
 2. Create an app key. It's shown once.
 3. Run the app with `Platform.from_service("http://localhost:8200", api_key)`.
 
 Prompt edits in the UI reach running apps on their next refresh. Rollback is one click.
 
-- **Accounts:** argon2 passwords. Sessions live in the database, in an HttpOnly, SameSite=Strict cookie. Every write needs the `X-Anvil-Forge: 1` header. Logins are rate-limited per email and per IP. Sign-up is off unless `ANVIL_FORGE_SIGNUP=open`.
-- **App keys:** `afk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle`.
-- **Docker:** `docker build -f server/Dockerfile -t anvil-forge-server .`, then `docker run -p 8200:8200 -v anvil-forge-data:/data anvil-forge-server`. Create the first user with `docker exec -it <container> anvil-forge-server create-user --email you@example.com`. Behind TLS, set `ANVIL_FORGE_SECURE_COOKIES=1`.
+- **Accounts:** argon2 passwords. Sessions live in the database, in an HttpOnly, SameSite=Strict cookie. Every write needs the `X-Bastion: 1` header. Logins are rate-limited per email and per IP. Sign-up is off unless `BASTION_SIGNUP=open`.
+- **App keys:** `bk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle`.
+- **Docker:** `docker build -f server/Dockerfile -t bastion-server .`, then `docker run -p 8200:8200 -v bastion-data:/data bastion-server`. Create the first user with `docker exec -it <container> bastion-server create-user --email you@example.com`. Behind TLS, set `BASTION_SECURE_COOKIES=1`.
 
 | Variable | Default | |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./anvil_forge_server.db` | Postgres: `postgresql+psycopg://…` |
-| `ANVIL_FORGE_SIGNUP` | off | `open` enables the sign-up page |
-| `ANVIL_FORGE_SESSION_DAYS` | `7` | session lifetime |
-| `ANVIL_FORGE_SECURE_COOKIES` | off | `1` behind HTTPS |
-| `ANVIL_FORGE_TRUST_PROXY` | off | `1` to rate-limit by `X-Forwarded-For` behind a proxy |
-| `ANVIL_FORGE_AUTO_MIGRATE` | `1` | `0` to run `anvil-forge-server migrate` yourself |
+| `DATABASE_URL` | `sqlite:///./bastion_server.db` | Postgres: `postgresql+psycopg://…` |
+| `BASTION_SIGNUP` | off | `open` enables the sign-up page |
+| `BASTION_SESSION_DAYS` | `7` | session lifetime |
+| `BASTION_SECURE_COOKIES` | off | `1` behind HTTPS |
+| `BASTION_TRUST_PROXY` | off | `1` to rate-limit by `X-Forwarded-For` behind a proxy |
+| `BASTION_AUTO_MIGRATE` | `1` | `0` to run `bastion-server migrate` yourself |
 
 ## Config reference
 

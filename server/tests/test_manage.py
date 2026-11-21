@@ -1,9 +1,9 @@
 """Item 3: the management API. Every write is compiled with the SDK, revisioned and audited."""
 
-from anvil_forge import load_config
+from bastion import load_config
 from sqlalchemy import func, select
 
-from anvil_forge_server.models import Agent, AuditLog, BundleRevision, PromptVersion
+from bastion_server.models import Agent, AuditLog, BundleRevision, PromptVersion
 
 from .conftest import AGENT, TOOL, as_other_user, make_ironclad
 
@@ -32,7 +32,7 @@ def test_every_write_needs_a_session_and_csrf(ana, make_client):
     client, _ = ana
     anon, _ = make_client()
     assert anon.get("/v1/apps").status_code == 401
-    no_csrf = client.post("/v1/apps", json={"name": "x"}, headers={"X-Anvil-Forge": ""})
+    no_csrf = client.post("/v1/apps", json={"name": "x"}, headers={"X-Bastion": ""})
     assert no_csrf.status_code == 403
 
 

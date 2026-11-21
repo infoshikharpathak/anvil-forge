@@ -16,7 +16,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         migrate(settings.database_url)
     engine = make_engine(settings.database_url)
 
-    app = FastAPI(title="anvil-forge control plane", version="0.1.0")
+    app = FastAPI(title="bastion control plane", version="0.1.0")
     app.state.settings = settings
     app.state.engine = engine
     app.state.sessionmaker = make_sessionmaker(engine)

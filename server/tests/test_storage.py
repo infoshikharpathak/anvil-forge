@@ -7,8 +7,8 @@ from alembic.migration import MigrationContext
 from sqlalchemy import inspect, select
 from sqlalchemy.exc import IntegrityError
 
-from anvil_forge_server.db import alembic_config, make_engine, migrate
-from anvil_forge_server.models import (
+from bastion_server.db import alembic_config, make_engine, migrate
+from bastion_server.models import (
     Agent, App, AuditLog, Base, BundleRevision, Grant, PromptVersion, Tool, User,
 )
 

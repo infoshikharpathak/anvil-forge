@@ -3,7 +3,7 @@
 import pytest
 import yaml
 
-from anvil_forge.config import POLICY_NAME, ConfigError, load_config
+from bastion.config import POLICY_NAME, ConfigError, load_config
 
 from .conftest import base_config
 
@@ -32,7 +32,7 @@ def test_agent_tools_come_from_the_anvil_policy():
 
 
 def test_yaml_file(tmp_path):
-    path = tmp_path / "anvil-forge.yaml"
+    path = tmp_path / "bastion.yaml"
     path.write_text(yaml.safe_dump(base_config()))
     assert "ironclad.dispute_flow" in load_config(path).platform.flows
 

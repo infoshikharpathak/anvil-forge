@@ -47,7 +47,7 @@ from anvil.namespaces import app_of, relative, resolve, short_name
 from anvil.policy import resolve_agent_policy
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
-POLICY_NAME = "anvil-forge"
+POLICY_NAME = "bastion"
 Backend = Literal["openai", "anthropic"]
 
 
@@ -172,7 +172,7 @@ def load_config(source: str | Path | dict[str, Any]) -> CompiledConfig:
     try:
         platform = PlatformConfig.model_validate(raw)
     except ValidationError as e:
-        raise ConfigError(f"Invalid anvil-forge config:\n{e}") from e
+        raise ConfigError(f"Invalid bastion config:\n{e}") from e
     return compile_config(platform)
 
 
@@ -210,7 +210,7 @@ def compile_config(platform: PlatformConfig) -> CompiledConfig:
             delegations[src].add(dst)
 
     if errors:
-        raise ConfigError("Invalid anvil-forge config:\n" + "\n".join(f"  - {e}" for e in errors))
+        raise ConfigError("Invalid bastion config:\n" + "\n".join(f"  - {e}" for e in errors))
 
     agents_policy = {
         aid: AgentPolicy(
@@ -224,14 +224,14 @@ def compile_config(platform: PlatformConfig) -> CompiledConfig:
     }
     raw_anvil = {
         "apps": platform.apps,
-        "policies": {POLICY_NAME: {"description": "Compiled by anvil-forge", "agents": agents_policy}},
+        "policies": {POLICY_NAME: {"description": "Compiled by bastion", "agents": agents_policy}},
         "grants": platform.grants,
         "settings": platform.settings,
     }
     try:
         anvil_config = load_config_dict(raw_anvil)
     except AnvilConfigError as e:
-        raise ConfigError(str(e).replace("Invalid anvil config", "Invalid anvil-forge config")) from e
+        raise ConfigError(str(e).replace("Invalid anvil config", "Invalid bastion config")) from e
     return CompiledConfig(platform, anvil_config)
 
 

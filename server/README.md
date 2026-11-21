@@ -1,6 +1,6 @@
-# anvil-forge-server
+# bastion-server
 
-The anvil-forge control plane:
+The bastion control plane:
 - accounts;
 - apps, tools, agents with immutable prompt versions, flows and grants;
 - app keys;
@@ -10,7 +10,7 @@ See the repo README's "Control plane" section, and `docs/SPEC.md` (4b) for the d
 
 ```bash
 pip install -e sdk -e "server[dev]"      # from the repo root
-anvil-forge-server create-user --email you@example.com
-anvil-forge-server serve --port 8200     # http://localhost:8200/ui
+bastion-server create-user --email you@example.com
+bastion-server serve --port 8200     # http://localhost:8200/ui
 pytest -q server                          # add TEST_POSTGRES_URL=... to also run on Postgres
 ```

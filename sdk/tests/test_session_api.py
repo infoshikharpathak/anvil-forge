@@ -3,7 +3,7 @@ session_records, session_prerequisites, describe_agent."""
 
 import pytest
 
-from anvil_forge import Platform, PlatformError
+from bastion import Platform, PlatformError
 
 from .conftest import BASE, base_config
 from .llm import ScriptedOpenAI
@@ -112,8 +112,8 @@ def test_describe_agent(monkeypatch):
 
 
 def test_trust_overrides_compile_into_policy_and_are_validated(monkeypatch):
-    from anvil_forge import ConfigError, load_config
-    from anvil_forge.config import POLICY_NAME
+    from bastion import ConfigError, load_config
+    from bastion.config import POLICY_NAME
 
     cfg = base_config()
     cfg["agents"]["ironclad.support_agent"]["trust_overrides"] = {"get_accounts": "untrusted"}

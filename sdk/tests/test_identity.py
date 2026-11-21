@@ -9,10 +9,10 @@ from agent_forge.core.orchestrator import GraphNode, GraphSpec
 from agent_forge.tools.sources import register_tool_source, unregister_tool_source
 from anvil import Anvil
 
-from anvil_forge.agents import ClientProvider, PlatformFactory, anvil_agent_id
-from anvil_forge.config import POLICY_NAME, load_config
-from anvil_forge.hooks import AnvilHooks
-from anvil_forge.tool_source import AnvilToolSource
+from bastion.agents import ClientProvider, PlatformFactory, anvil_agent_id
+from bastion.config import POLICY_NAME, load_config
+from bastion.hooks import AnvilHooks
+from bastion.tool_source import AnvilToolSource
 
 from .conftest import BASE, base_config
 from .llm import ScriptedAnthropic, ScriptedOpenAI

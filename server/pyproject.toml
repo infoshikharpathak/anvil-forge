@@ -1,12 +1,12 @@
 [project]
-name = "anvil-forge-server"
+name = "bastion-server"
 version = "0.1.0"
-description = "anvil-forge control plane: accounts, apps, tools, agents, prompt versions, flows, grants, app keys, and the bundle API the SDK's remote mode pulls from."
+description = "bastion control plane: accounts, apps, tools, agents, prompt versions, flows, grants, app keys, and the bundle API the SDK's remote mode pulls from."
 requires-python = ">=3.11"
 dependencies = [
   # The SDK in this repo (install both: pip install -e sdk -e server).
   # Its config compiler validates every write.
-  "anvil-forge",
+  "bastion",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
   "sqlalchemy>=2.0",
@@ -22,17 +22,17 @@ postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27"]
 
 [project.scripts]
-anvil-forge-server = "anvil_forge_server.cli:main"
+bastion-server = "bastion_server.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["anvil_forge_server*"]
+include = ["bastion_server*"]
 
 [tool.setuptools.package-data]
-anvil_forge_server = ["migrations/*.py", "migrations/versions/*.py", "migrations/script.py.mako", "templates/*.html", "static/*"]
+bastion_server = ["migrations/*.py", "migrations/versions/*.py", "migrations/script.py.mako", "templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

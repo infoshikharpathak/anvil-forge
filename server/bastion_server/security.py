@@ -17,9 +17,9 @@ from argon2.exceptions import InvalidHashError, VerificationError
 
 _hasher = PasswordHasher()
 
-SESSION_COOKIE = "afs_session"
-CSRF_HEADER = "X-Anvil-Forge"
-APP_KEY_PREFIX = "afk_"
+SESSION_COOKIE = "bastion_session"
+CSRF_HEADER = "X-Bastion"
+APP_KEY_PREFIX = "bk_"
 MIN_PASSWORD_LENGTH = 10
 
 

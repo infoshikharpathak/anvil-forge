@@ -2,7 +2,7 @@
 
 Every management write goes through ``commit_change``. It rebuilds the
 bundle of each app the write touches, compiles each with the SDK's own
-config compiler (anvil_forge.load_config), and only then stores new
+config compiler (bastion.load_config), and only then stores new
 bundle revisions and an audit row. If any bundle fails to compile, the
 write is rejected and the request's transaction rolls back, so nothing is
 saved.
@@ -14,7 +14,7 @@ import hashlib
 import json
 from typing import Any, Iterable
 
-from anvil_forge.config import ConfigError, load_config
+from bastion.config import ConfigError, load_config
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -67,7 +67,7 @@ def _app_section(app: App, tools: Iterable[Tool]) -> dict[str, Any]:
 
 
 def build_bundle(db: Session, app: App) -> dict[str, Any]:
-    """The app's config in exactly the SDK's format (anvil_forge.config)."""
+    """The app's config in exactly the SDK's format (bastion.config)."""
     own_tools = db.scalars(select(Tool).where(Tool.app_id == app.id)).all()
     apps = {app.name: _app_section(app, own_tools)}
 

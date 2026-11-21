@@ -22,7 +22,7 @@ def key_app(authorization: str | None = Header(default=None), db: Session = Depe
     raw = authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None
     found = app_for_key(db, raw)
     if found is None:
-        raise HTTPException(401, "A valid app key is required (Authorization: Bearer afk_...).",
+        raise HTTPException(401, "A valid app key is required (Authorization: Bearer bk_...).",
                             headers={"WWW-Authenticate": "Bearer"})
     return found[0]
 

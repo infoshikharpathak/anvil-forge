@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .models import App, AppKey, User
 from .security import APP_KEY_PREFIX, aware, new_app_key, sha256
 
-PREFIX_LEN = 12  # "afk_" + 8 chars: enough to tell keys apart, useless to an attacker
+PREFIX_LEN = 12  # "bk_" + 9 chars: enough to tell keys apart, useless to an attacker
 _TOUCH_EVERY = timedelta(seconds=60)
 
 

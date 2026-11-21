@@ -1,4 +1,4 @@
-"""Talking to the anvil-forge control plane (remote mode).
+"""Talking to the bastion control plane (remote mode).
 
 ``BundleClient`` fetches ``GET /v1/sdk/bundle`` with the app key, honours
 ETags, and keeps a disk cache of the last good bundle. The cache file is
@@ -23,7 +23,7 @@ from typing import Any
 
 import httpx
 
-DEFAULT_CACHE_DIR = Path(os.environ.get("ANVIL_FORGE_CACHE_DIR", Path.home() / ".cache" / "anvil-forge"))
+DEFAULT_CACHE_DIR = Path(os.environ.get("BASTION_CACHE_DIR", Path.home() / ".cache" / "bastion"))
 
 
 class ServiceError(Exception):

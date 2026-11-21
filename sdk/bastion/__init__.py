@@ -1,8 +1,8 @@
-"""anvil_forge: governed, traced agents on Anvil + Agent Forge.
+"""bastion: governed, traced agents on Anvil + Agent Forge.
 
-    from anvil_forge import Platform
+    from bastion import Platform
 
-    platform = Platform.from_config("anvil-forge.yaml", app="ironclad")
+    platform = Platform.from_config("bastion.yaml", app="ironclad")
     reply = await platform.run_agent("support_agent", "What are my accounts?")
 """
 

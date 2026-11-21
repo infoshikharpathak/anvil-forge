@@ -5,7 +5,7 @@ import asyncio
 import pytest
 import yaml
 
-from anvil_forge import LocalSink, Platform, PlatformError
+from bastion import LocalSink, Platform, PlatformError
 
 from .conftest import BASE, base_config
 from .llm import ScriptedAnthropic, ScriptedOpenAI
@@ -54,7 +54,7 @@ def test_introspection_uses_bare_names(make):
 
 
 def test_from_yaml_path(make, tmp_path):
-    path = tmp_path / "anvil-forge.yaml"
+    path = tmp_path / "bastion.yaml"
     path.write_text(yaml.safe_dump(base_config()))
     p, _ = make(config=str(path))
     assert p.list_flows() == ["dispute_flow"]
@@ -134,7 +134,7 @@ async def test_concurrent_runs_keep_separate_traces(make):
 
 
 async def test_failing_sink_never_fails_the_run(make):
-    from anvil_forge import TraceSink
+    from bastion import TraceSink
 
     class Broken(TraceSink):
         async def export(self, trace):

@@ -11,7 +11,7 @@ import os
 import pytest
 from agent_forge import db
 
-from anvil_forge import LocalSink, Platform
+from bastion import LocalSink, Platform
 
 from .conftest import BASE, base_config
 from .llm import ScriptedAnthropic, ScriptedOpenAI
@@ -105,7 +105,7 @@ async def test_cross_app_denied_without_grant(monkeypatch):
 
 
 async def test_without_grant_the_config_does_not_even_load(monkeypatch):
-    from anvil_forge import ConfigError
+    from bastion import ConfigError
 
     cfg = base_config()
     cfg["grants"] = []
@@ -228,8 +228,8 @@ INJECTIONS = [
 async def test_live_classifier_separates_requests_from_injections():
     """Regression check: ordinary (even money-moving) requests must not be
     flagged, real manipulation must be."""
-    from anvil_forge.agents import ClientProvider
-    from anvil_forge.classifier import ProviderClassifier
+    from bastion.agents import ClientProvider
+    from bastion.classifier import ProviderClassifier
 
     clf = ProviderClassifier(ClientProvider(), "openai", "gpt-4o-mini")
     flagged = [t for t in BENIGN_REQUESTS if (await clf(t)).detected]

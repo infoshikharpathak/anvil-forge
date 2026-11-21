@@ -1,7 +1,11 @@
-# anvil-forge — Phase 4 spec
+# bastion — Phase 4 spec
+
+> Renamed from anvil-forge to bastion on 2026-11-22 (packages bastion and
+> bastion-server). The repo folder and the GitHub repo keep the old name
+> for now; they are renamed separately.
 
 New repo: ~/Portfolio Projects/anvil-forge (git init, GitHub repo created by me later)
-Layout: sdk/ (package anvil_forge) and server/ (package anvil_forge_server)
+Layout: sdk/ (package bastion) and server/ (package bastion_server)
 First, save this whole spec as docs/SPEC.md and commit it.
 
 THIS SESSION: build 4a only. Stop after 4a and report.
@@ -52,7 +56,7 @@ pinned to their current main commits (git dependencies).
    Exporting never blocks or fails a run.
 
 7. Public API:
-     platform = Platform.from_config("anvil-forge.yaml", app="ironclad")
+     platform = Platform.from_config("bastion.yaml", app="ironclad")
      reply = await platform.run_agent("support_agent", message, trace_id=None)
      result = await platform.run_flow("dispute_flow", message)
      platform.list_agents(), platform.list_tools()
@@ -93,12 +97,12 @@ Decisions (4b as built):
   so the server does not import it and does not need it running. It copies
   the registry's patterns: SHA-256 hashed keys, DB-backed cookie sessions,
   and a required CSRF header on writes (like Anvil's X-Anvil-UI).
-- Package: server/ is anvil_forge_server, installed next to the SDK
+- Package: server/ is bastion_server, installed next to the SDK
   (pip install -e sdk -e server). It depends on the SDK and uses the SDK's
   own config compiler for all validation.
 - Storage: SQLAlchemy 2 + Alembic migrations, applied at startup and via
-  `anvil-forge-server migrate`. SQLite by default
-  (sqlite:///./anvil_forge_server.db), Postgres via DATABASE_URL
+  `bastion-server migrate`. SQLite by default
+  (sqlite:///./bastion_server.db), Postgres via DATABASE_URL
   (postgresql+psycopg://...). CI runs the suite on both, with Postgres as a
   service container. Tables: users, user_sessions, login_attempts, apps,
   app_keys, tools, agents, prompt_versions, flows, grants,
@@ -107,11 +111,11 @@ Decisions (4b as built):
   management query is scoped to the signed-in user; another user's app is a
   404, never a 403, so names don't leak.
 - Accounts: email + password (argon2id). No GitHub login in 4b. Sign-up is
-  off by default: the first user comes from `anvil-forge-server create-user`,
-  and ANVIL_FORGE_SIGNUP=open enables the sign-up page.
+  off by default: the first user comes from `bastion-server create-user`,
+  and BASTION_SIGNUP=open enables the sign-up page.
 - Sessions: a random token in an HttpOnly, SameSite=Strict cookie. The DB
   stores only its SHA-256. 7-day lifetime, logout deletes the row. Every
-  write needs the header X-Anvil-Forge: 1, which a cross-site form can't send.
+  write needs the header X-Bastion: 1, which a cross-site form can't send.
 - Login rate limit: 5 failed attempts per email, or 20 per client IP, in 15
   minutes, then 429 until the window passes. Attempts are stored in the DB,
   so the limit holds across processes and restarts.
@@ -123,7 +127,7 @@ Decisions (4b as built):
   and points the agent at it. Rollback only moves the pointer.
 - Validation: every write builds the bundle of the app it touches, plus the
   bundle of every app that depends on it through grants, and compiles each
-  with anvil_forge.load_config. Any compile error rejects the write (422 with
+  with bastion.load_config. Any compile error rejects the write (422 with
   the compiler's message) and nothing is saved.
 - Bundles: an app's bundle is the SDK config format exactly: the app itself
   (base_url, auth, tools), its agents (instructions and prompt_version from
@@ -134,15 +138,15 @@ Decisions (4b as built):
   JSON). A write that leaves a bundle byte-identical creates no revision.
 - Audit: every successful write adds an audit_log row: user, app, action,
   entity type and name, before/after summaries, and time.
-- App keys: afk_<43 random url-safe chars>, shown once at creation. Stored as
+- App keys: bk_<43 random url-safe chars>, shown once at creation. Stored as
   SHA-256 (high entropy, so no slow hash needed; passwords use argon2). An
   app can have several keys, each with created_at, last_used_at and
   revoked_at.
-- SDK API (/v1/sdk, Authorization: Bearer afk_...): GET /v1/sdk/bundle
+- SDK API (/v1/sdk, Authorization: Bearer bk_...): GET /v1/sdk/bundle
   returns {app, revision, etag, bundle} with an ETag header, and 304 on
   If-None-Match. App keys reach nothing else (management routes: 401), and
   session cookies don't work on /v1/sdk. Trace upload is 4c.
-- Import/export: POST /v1/apps/{app}/import takes anvil-forge YAML and
+- Import/export: POST /v1/apps/{app}/import takes bastion YAML and
   replaces that app's tools, agents, flows, grants-to-it, settings and
   classifier. Other apps the YAML mentions must already exist under the
   same user (or are only grant sources). GET /v1/apps/{app}/export returns
@@ -166,7 +170,7 @@ Decisions (4b as built):
   rollback, flows, grants, keys with create/revoke), and the audit log.
   Writes go through the same /v1 API with the CSRF header. A nav slot is
   reserved for 4c's trace views.
-- Deploy: `anvil-forge-server serve` (uvicorn), `create-user`, `migrate`;
+- Deploy: `bastion-server serve` (uvicorn), `create-user`, `migrate`;
   server/Dockerfile; a README section.
 
 ================ 4c: Dashboard (later) ================

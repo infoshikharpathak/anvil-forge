@@ -4,9 +4,9 @@ import io
 
 from sqlalchemy import select
 
-from anvil_forge_server.cli import _safe_url, main
-from anvil_forge_server.db import make_engine, make_sessionmaker
-from anvil_forge_server.models import User
+from bastion_server.cli import _safe_url, main
+from bastion_server.db import make_engine, make_sessionmaker
+from bastion_server.models import User
 
 
 def test_create_user_from_stdin_then_log_in(db_url, monkeypatch, capsys, make_client):
@@ -21,7 +21,7 @@ def test_create_user_from_stdin_then_log_in(db_url, monkeypatch, capsys, make_cl
     assert user.password_hash.startswith("$argon2id$")
     client, _ = make_client()
     r = client.post("/v1/auth/login", json={"email": "admin@example.com", "password": "correct horse battery"},
-                    headers={"X-Anvil-Forge": "1"})
+                    headers={"X-Bastion": "1"})
     assert r.status_code == 200
 
 

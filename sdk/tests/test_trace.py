@@ -10,11 +10,11 @@ from agent_forge.tools.sources import register_tool_source, unregister_tool_sour
 from agent_forge.tracing import RunTracer
 from anvil import Anvil
 
-from anvil_forge.agents import ClientProvider, PlatformFactory
-from anvil_forge.config import POLICY_NAME, load_config
-from anvil_forge.hooks import AnvilHooks
-from anvil_forge.tool_source import AnvilToolSource
-from anvil_forge.trace import (
+from bastion.agents import ClientProvider, PlatformFactory
+from bastion.config import POLICY_NAME, load_config
+from bastion.hooks import AnvilHooks
+from bastion.tool_source import AnvilToolSource
+from bastion.trace import (
     Collectors, DashboardSink, LocalSink, RunCollector, TraceExporter, TraceRecorderHooks, TraceSink, build_trace,
 )
 

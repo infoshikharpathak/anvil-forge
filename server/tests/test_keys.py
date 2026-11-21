@@ -4,8 +4,8 @@ import hashlib
 
 from sqlalchemy import select
 
-from anvil_forge_server.keys import app_for_key
-from anvil_forge_server.models import AppKey
+from bastion_server.keys import app_for_key
+from bastion_server.models import AppKey
 
 from .conftest import as_other_user, make_ironclad
 
@@ -16,7 +16,7 @@ def test_key_is_shown_once_and_stored_hashed(ana):
     created = client.post("/v1/apps/ironclad/keys", json={"name": "agent-service"})
     assert created.status_code == 201
     raw = created.json()["key"]
-    assert raw.startswith("afk_") and len(raw) == 47
+    assert raw.startswith("bk_") and len(raw) == 46  # "bk_" + 43 url-safe chars
     listed = client.get("/v1/apps/ironclad/keys").json()
     assert "key" not in listed[0] and listed[0]["prefix"] == raw[:12] and listed[0]["active"]
     assert raw not in str(listed)
@@ -54,7 +54,7 @@ def test_last_used_at_recorded(ana):
 def test_malformed_and_unknown_keys_rejected(ana):
     _, app = ana
     with app.state.sessionmaker() as db:
-        for raw in (None, "", "sk-live-123", "afk_doesnotexist"):
+        for raw in (None, "", "sk-live-123", "bk_doesnotexist"):
             assert app_for_key(db, raw) is None
 
 

@@ -1,9 +1,9 @@
-"""Item 6: import anvil-forge YAML into an app, export it back."""
+"""Item 6: import bastion YAML into an app, export it back."""
 
 from pathlib import Path
 
 import yaml
-from anvil_forge import load_config
+from bastion import load_config
 from fastapi.testclient import TestClient
 
 IRONCLAD = Path(__file__).parent / "fixtures" / "anvil-ironclad.yaml"  # copy of Ironclad@32b75d8
@@ -58,7 +58,7 @@ def test_export_is_importable_and_identical(ana):
     import_yaml(client, IRONCLAD.read_text())
     exported = client.get("/v1/apps/ironclad/export")
     assert exported.headers["content-type"].startswith("application/yaml")
-    assert 'filename="ironclad.anvil-forge.yaml"' in exported.headers["content-disposition"]
+    assert 'filename="ironclad.bastion.yaml"' in exported.headers["content-disposition"]
     same_compiled(load_config(yaml.safe_load(exported.text)), load_config(IRONCLAD))
     rev = client.get("/v1/apps/ironclad").json()["revision"]
     assert import_yaml(client, exported.text).json()["revision"] == rev  # no-op

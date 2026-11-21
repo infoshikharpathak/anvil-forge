@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from anvil_forge import LocalSink, Platform
+from bastion import LocalSink, Platform
 
 from .conftest import BASE, base_config
 from .llm import ScriptedOpenAI

@@ -4,8 +4,8 @@ import pytest
 from agent_forge.core.context import RunContext
 from anvil import Anvil
 
-from anvil_forge.config import POLICY_NAME, load_config
-from anvil_forge.hooks import AnvilHooks
+from bastion.config import POLICY_NAME, load_config
+from bastion.hooks import AnvilHooks
 
 from .conftest import base_config
 

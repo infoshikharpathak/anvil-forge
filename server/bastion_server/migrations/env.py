@@ -3,7 +3,7 @@
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
-from anvil_forge_server.models import Base
+from bastion_server.models import Base
 
 config = context.config
 target_metadata = Base.metadata

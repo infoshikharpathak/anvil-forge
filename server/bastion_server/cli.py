@@ -1,4 +1,4 @@
-"""anvil-forge-server: serve, migrate, create-user."""
+"""bastion-server: serve, migrate, create-user."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from .settings import load_settings
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
 
-    uvicorn.run("anvil_forge_server.app:create_app", factory=True, host=args.host, port=args.port,
+    uvicorn.run("bastion_server.app:create_app", factory=True, host=args.host, port=args.port,
                 reload=args.reload, proxy_headers=True)
     return 0
 
@@ -64,7 +64,7 @@ def _safe_url(url: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="anvil-forge-server", description="anvil-forge control plane")
+    parser = argparse.ArgumentParser(prog="bastion-server", description="bastion control plane")
     sub = parser.add_subparsers(dest="command", required=True)
 
     serve = sub.add_parser("serve", help="run the service (migrates the database first)")

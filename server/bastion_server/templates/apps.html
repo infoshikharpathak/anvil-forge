@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Apps · anvil-forge{% endblock %}
+{% block title %}Apps · bastion{% endblock %}
 {% block content %}
 <h1>Apps</h1>
 <p class="sub">Each app has its tools, agents and flows. Apps running the SDK in remote mode pull their bundle from here.</p>
@@ -15,7 +15,7 @@
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="sub">No apps yet. Create one or import an anvil-forge YAML below.</p>{% endif %}
+  {% else %}<p class="sub">No apps yet. Create one or import an bastion YAML below.</p>{% endif %}
 </div>
 <div class="row" style="align-items:start">
   <form class="panel" style="flex:1 1 280px" data-api="POST /v1/apps">
@@ -27,7 +27,7 @@
   <form class="panel" style="flex:2 1 380px" id="import-form" data-body="yaml" data-api="POST /v1/apps/__/import">
     <h2 style="margin-top:0">Import YAML</h2>
     <label>App name (as in the file) <input id="import-app" required></label>
-    <label>anvil-forge config <textarea id="import-yaml" placeholder="apps:&#10;  ironclad:&#10;    ..."></textarea></label>
+    <label>bastion config <textarea id="import-yaml" placeholder="apps:&#10;  ironclad:&#10;    ..."></textarea></label>
     <button type="submit">Import</button><p class="msg"></p>
   </form>
 </div>

@@ -4,9 +4,9 @@ import pytest
 from agent_forge.core.context import RunContext, use_run_context
 from anvil import Anvil
 
-from anvil_forge.agents import ClientProvider
-from anvil_forge.classifier import ProviderClassifier, default_provider
-from anvil_forge.config import POLICY_NAME, load_config
+from bastion.agents import ClientProvider
+from bastion.classifier import ProviderClassifier, default_provider
+from bastion.config import POLICY_NAME, load_config
 
 from .conftest import base_config
 from .llm import ScriptedAnthropic, ScriptedOpenAI

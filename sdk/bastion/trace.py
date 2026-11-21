@@ -259,9 +259,9 @@ class TraceSink(ABC):
 
 
 class LocalSink(TraceSink):
-    """Full-detail traces as JSON lines in the app (default ./anvil_forge_traces.jsonl)."""
+    """Full-detail traces as JSON lines in the app (default ./bastion_traces.jsonl)."""
 
-    def __init__(self, path: str | Path = "anvil_forge_traces.jsonl") -> None:
+    def __init__(self, path: str | Path = "bastion_traces.jsonl") -> None:
         self.path = Path(path)
 
     async def export(self, trace: dict[str, Any]) -> None:
@@ -281,7 +281,7 @@ class LocalSink(TraceSink):
 
 
 class DashboardSink(TraceSink):
-    """Sends traces to the anvil-forge dashboard. Interface only: ships in
+    """Sends traces to the bastion dashboard. Interface only: ships in
     Phase 4c (batched, async, with a local fallback file).
 
     By default only metadata leaves the app: IDs, agents, prompt versions,

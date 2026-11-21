@@ -1,11 +1,11 @@
-"""Import and export anvil-forge YAML (/v1/apps/{app}/import, /export)."""
+"""Import and export bastion YAML (/v1/apps/{app}/import, /export)."""
 
 from __future__ import annotations
 
 from typing import Any
 
 import yaml
-from anvil_forge.config import ConfigError, load_config
+from bastion.config import ConfigError, load_config
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import delete, select
@@ -34,7 +34,7 @@ def _parse(raw: bytes) -> dict[str, Any]:
     if not isinstance(doc, dict):
         raise HTTPException(422, "The config must be a YAML mapping.")
     try:
-        load_config(doc)  # must stand on its own as an anvil-forge config
+        load_config(doc)  # must stand on its own as an bastion config
     except ConfigError as e:
         raise HTTPException(422, str(e)) from None
     return doc
@@ -143,7 +143,7 @@ def export_config(app_name: str, db: Session = Depends(get_db), user: User = Dep
     app = user_app(db, user, app_name)
     rev = latest_revision(db, app)
     bundle = rev.bundle if rev else build_bundle(db, app)
-    text = f"# anvil-forge config for app {app_name!r}, revision {rev.revision if rev else 0}\n"
+    text = f"# bastion config for app {app_name!r}, revision {rev.revision if rev else 0}\n"
     text += yaml.safe_dump(bundle, sort_keys=False, allow_unicode=True, width=100)
     return Response(text, media_type="application/yaml",
-                    headers={"Content-Disposition": f'attachment; filename="{app_name}.anvil-forge.yaml"'})
+                    headers={"Content-Disposition": f'attachment; filename="{app_name}.bastion.yaml"'})

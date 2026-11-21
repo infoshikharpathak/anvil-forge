@@ -1,7 +1,7 @@
 // All UI writes go through the /v1 API with the CSRF header
 // (a cross-site form can't send custom headers).
 async function api(method, url, body, raw) {
-  const opts = { method, headers: { "X-Anvil-Forge": "1" }, credentials: "same-origin" };
+  const opts = { method, headers: { "X-Bastion": "1" }, credentials: "same-origin" };
   if (raw !== undefined) { opts.body = raw; opts.headers["Content-Type"] = "application/yaml"; }
   else if (body !== undefined) { opts.body = JSON.stringify(body); opts.headers["Content-Type"] = "application/json"; }
   const r = await fetch(url, opts);

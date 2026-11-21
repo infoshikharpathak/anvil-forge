@@ -1,6 +1,6 @@
 """Platform: the public API.
 
-    platform = Platform.from_config("anvil-forge.yaml", app="ironclad")
+    platform = Platform.from_config("bastion.yaml", app="ironclad")
     reply = await platform.run_agent("support_agent", message, trace_id=None)
     result = await platform.run_flow("dispute_flow", message)
     platform.list_agents(), platform.list_tools(), platform.list_flows()
@@ -66,7 +66,7 @@ def _cached_or_fail(client: BundleClient, url: str, error: Exception) -> BundleR
     cached = client.load_cache()
     if cached is None:
         raise PlatformError(
-            f"Can't reach the anvil-forge service at {url} ({error}) and there's no cached bundle "
+            f"Can't reach the bastion service at {url} ({error}) and there's no cached bundle "
             f"at {client.cache_path}. Start the service, or run once while it's up to create the cache."
         ) from None
     return cached
@@ -185,7 +185,7 @@ class Platform:
         service_transport: Any = None,
         **kwargs: Any,
     ) -> Platform:
-        """Run on the bundle the anvil-forge service publishes for the key's app.
+        """Run on the bundle the bastion service publishes for the key's app.
 
         Fetches the bundle now and caches it on disk. If the service can't be
         reached, it runs on the cached bundle; with no cache it raises
@@ -199,14 +199,14 @@ class Platform:
             result = client.fetch()
         except ServiceError as e:
             if e.status in (401, 403):
-                raise PlatformError(f"The anvil-forge service at {url} rejected the app key ({e}).") from None
+                raise PlatformError(f"The bastion service at {url} rejected the app key ({e}).") from None
             result = _cached_or_fail(client, url, e)
         except httpx.HTTPError as e:
             result = _cached_or_fail(client, url, e)
         else:
             client.save_cache(result)
         if result.from_cache:
-            log.warning("[platform] anvil-forge service unreachable; running on cached revision %s of %r",
+            log.warning("[platform] bastion service unreachable; running on cached revision %s of %r",
                         result.revision, result.app)
         try:
             compiled = load_config(result.bundle)

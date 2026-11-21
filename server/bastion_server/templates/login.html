@@ -1,9 +1,9 @@
 {% extends "base.html" %}
-{% block title %}Log in · anvil-forge{% endblock %}
+{% block title %}Log in · bastion{% endblock %}
 {% block content %}
 <div class="auth-box panel">
   <h1>Log in</h1>
-  <p class="sub">The anvil-forge control plane.</p>
+  <p class="sub">The bastion control plane.</p>
   <form data-api="POST /v1/auth/login" data-then="{{ next or '/ui' }}">
     <label>Email <input id="email" name="email" type="email" autocomplete="username" required></label>
     <label>Password <input id="password" name="password" type="password" autocomplete="current-password" required></label>

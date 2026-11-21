@@ -9,15 +9,15 @@ import json
 import httpx
 import pytest
 
-from anvil_forge import LocalSink, Platform, PlatformError
+from bastion import LocalSink, Platform, PlatformError
 
 from .conftest import BASE, base_config
 from .llm import ScriptedOpenAI
 from .upstream import Upstream
 
-KEY = "afk_test_" + "x" * 34
+KEY = "bk_test_" + "x" * 34
 SUPPORT = BASE["agents"]["ironclad.support_agent"]["instructions"]
-URL = "http://forge.test"
+URL = "http://bastion.test"
 
 
 @pytest.fixture(autouse=True)
@@ -31,7 +31,7 @@ def _clean_registry():
 
 
 class FakeService:
-    """GET /v1/sdk/bundle with key auth and ETags, like anvil-forge-server."""
+    """GET /v1/sdk/bundle with key auth and ETags, like bastion-server."""
 
     def __init__(self, bundle, revision=1):
         self.up = True
@@ -106,9 +106,9 @@ def test_service_down_and_no_cache_is_a_clear_error(tmp_path):
 def test_rejected_key_fails_even_with_a_cache(tmp_path, monkeypatch):
     svc = FakeService(base_config())
     platform(svc, tmp_path)
-    monkeypatch.setattr("tests.test_remote.KEY", "afk_revoked")  # what the client sends no longer matches
+    monkeypatch.setattr("tests.test_remote.KEY", "bk_revoked")  # what the client sends no longer matches
     with pytest.raises(PlatformError, match="rejected the app key"):
-        Platform.from_service(URL, "afk_wrong" + "y" * 30, cache_dir=tmp_path / "cache",
+        Platform.from_service(URL, "bk_wrong" + "y" * 30, cache_dir=tmp_path / "cache",
                               service_transport=httpx.MockTransport(svc))
 
 

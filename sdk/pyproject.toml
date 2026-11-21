@@ -1,5 +1,5 @@
 [project]
-name = "anvil-forge"
+name = "bastion"
 version = "0.1.0"
 description = "One platform SDK on top of Anvil (governance) and Agent Forge (agents): register apps, tools, agents and flows once; run them governed and traced."
 requires-python = ">=3.11"
@@ -21,7 +21,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["anvil_forge*"]
+include = ["bastion*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
