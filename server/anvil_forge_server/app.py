@@ -19,9 +19,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.sessionmaker = make_sessionmaker(engine)
 
-    from .routes import auth
+    from fastapi import Request
+    from fastapi.responses import JSONResponse
+
+    from .routes import auth, manage
+    from .workspace import ChangeRejected, NotFound
 
     app.include_router(auth.router)
+    app.include_router(manage.router)
+
+    @app.exception_handler(NotFound)
+    def _not_found(_req: Request, exc: NotFound):
+        return JSONResponse({"detail": str(exc)}, status_code=404)
+
+    @app.exception_handler(ChangeRejected)
+    def _rejected(_req: Request, exc: ChangeRejected):
+        # The SDK compiler's own message, so the fix is obvious.
+        return JSONResponse({"detail": exc.message, "app": exc.app}, status_code=422)
 
     @app.get("/health")
     def health():

@@ -77,3 +77,34 @@ def login(client, email="ana@example.com", password=PASSWORD):
     resp = client.post("/v1/auth/login", json={"email": email, "password": password}, headers=CSRF)
     assert resp.status_code == 200, resp.text
     return resp
+
+
+@pytest.fixture
+def ana(make_client):
+    """A signed-in client for ana@example.com (client, app)."""
+    client, app = make_client()
+    add_user(app)
+    login(client)
+    client.headers.update(CSRF)
+    return client, app
+
+
+def as_other_user(make_client, email="bob@example.com"):
+    client, app = make_client()
+    add_user(app, email=email)
+    login(client, email=email)
+    client.headers.update(CSRF)
+    return client
+
+
+TOOL = {"name": "get_accounts", "path": "/accounts", "method": "GET", "trust": "trusted",
+        "description": "List accounts.",
+        "parameters": {"type": "object", "properties": {"user_id": {"type": "string"}}, "required": ["user_id"]}}
+AGENT = {"name": "banking_agent", "instructions": "You are a banking assistant.", "backend": "openai",
+         "model": "gpt-4o-mini", "tools": ["get_accounts"]}
+
+
+def make_ironclad(client):
+    assert client.post("/v1/apps", json={"name": "ironclad", "base_url": "http://bank.test"}).status_code == 201
+    assert client.post("/v1/apps/ironclad/tools", json=TOOL).status_code == 201
+    assert client.post("/v1/apps/ironclad/agents", json=AGENT).status_code == 201
