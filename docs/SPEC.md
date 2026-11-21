@@ -68,7 +68,10 @@ pinned to their current main commits (git dependencies).
 
 9. README with a 20-line quickstart.
 
-================ 4b: Control plane service (later) ================
+================ 4b: Control plane service ================
+(Original bullets kept below; "Decisions" supersedes them where they differ.)
+
+Original:
 - Reuse Anvil's registry code (storage, hashed keys, admin session handling,
   policy CRUD) instead of re-implementing auth. Persist sessions (fixes the
   in-memory admin session gap).
@@ -84,6 +87,87 @@ pinned to their current main commits (git dependencies).
   disk, re-syncs on an interval via ETag (re-registering tool sources), and
   keeps running on the cached bundle if the service is down.
 - The service stores env var NAMES for credentials, never secret values.
+
+Decisions (4b as built):
+- Correction: Anvil's registry/ is not part of the installed anvil package,
+  so the server does not import it and does not need it running. It copies
+  the registry's patterns: SHA-256 hashed keys, DB-backed cookie sessions,
+  and a required CSRF header on writes (like Anvil's X-Anvil-UI).
+- Package: server/ is anvil_forge_server, installed next to the SDK
+  (pip install -e sdk -e server). It depends on the SDK and uses the SDK's
+  own config compiler for all validation.
+- Storage: SQLAlchemy 2 + Alembic migrations, applied at startup and via
+  `anvil-forge-server migrate`. SQLite by default
+  (sqlite:///./anvil_forge_server.db), Postgres via DATABASE_URL
+  (postgresql+psycopg://...). CI runs the suite on both, with Postgres as a
+  service container. Tables: users, user_sessions, login_attempts, apps,
+  app_keys, tools, agents, prompt_versions, flows, grants,
+  bundle_revisions, audit_log.
+- Ownership: a user owns apps. App names are unique per owner. Every
+  management query is scoped to the signed-in user; another user's app is a
+  404, never a 403, so names don't leak.
+- Accounts: email + password (argon2id). No GitHub login in 4b. Sign-up is
+  off by default: the first user comes from `anvil-forge-server create-user`,
+  and ANVIL_FORGE_SIGNUP=open enables the sign-up page.
+- Sessions: a random token in an HttpOnly, SameSite=Strict cookie. The DB
+  stores only its SHA-256. 7-day lifetime, logout deletes the row. Every
+  write needs the header X-Anvil-Forge: 1, which a cross-site form can't send.
+- Login rate limit: 5 failed attempts per email, or 20 per client IP, in 15
+  minutes, then 429 until the window passes. Attempts are stored in the DB,
+  so the limit holds across processes and restarts.
+- Credentials: tools and apps store auth as {header, secret_env, prefix}.
+  The schema has no field that can hold a secret value, and unknown fields
+  are rejected.
+- Prompt versions: immutable rows (version 1, 2, ...; label "v<n>", or the
+  imported label). Changing an agent's instructions creates the next version
+  and points the agent at it. Rollback only moves the pointer.
+- Validation: every write builds the bundle of the app it touches, plus the
+  bundle of every app that depends on it through grants, and compiles each
+  with anvil_forge.load_config. Any compile error rejects the write (422 with
+  the compiler's message) and nothing is saved.
+- Bundles: an app's bundle is the SDK config format exactly: the app itself
+  (base_url, auth, tools), its agents (instructions and prompt_version from
+  the active version), flows, grants that give it other apps' tools, and,
+  for each such granting app, its base_url, auth and only the granted tools.
+  Each successful write that changes an app's bundle stores a new
+  bundle_revision (monotonic per app) with an ETag (SHA-256 of the canonical
+  JSON). A write that leaves a bundle byte-identical creates no revision.
+- Audit: every successful write adds an audit_log row: user, app, action,
+  entity type and name, before/after summaries, and time.
+- App keys: afk_<43 random url-safe chars>, shown once at creation. Stored as
+  SHA-256 (high entropy, so no slow hash needed; passwords use argon2). An
+  app can have several keys, each with created_at, last_used_at and
+  revoked_at.
+- SDK API (/v1/sdk, Authorization: Bearer afk_...): GET /v1/sdk/bundle
+  returns {app, revision, etag, bundle} with an ETag header, and 304 on
+  If-None-Match. App keys reach nothing else (management routes: 401), and
+  session cookies don't work on /v1/sdk. Trace upload is 4c.
+- Import/export: POST /v1/apps/{app}/import takes anvil-forge YAML and
+  replaces that app's tools, agents, flows, grants-to-it, settings and
+  classifier. Other apps the YAML mentions must already exist under the
+  same user (or are only grant sources). GET /v1/apps/{app}/export returns
+  the bundle as YAML.
+- SDK remote mode: Platform.from_service(url, api_key, cache_dir=...,
+  refresh_interval=...). The app comes from the key.
+  - Startup: fetches the bundle synchronously and caches it
+    (<cache_dir>/<sha256(key)[:16]>.json, holding the bundle, revision and
+    ETag, never the key). If the service is down it uses the cache; with no
+    cache it raises PlatformError naming the URL and cache path.
+  - Refresh: a background task polls with If-None-Match. On a new revision
+    it compiles the bundle and swaps config, policy and tool registrations
+    atomically. Runs in progress finish on the config they started with.
+  - Sessions: an open session moves to the new config on its next turn. It
+    keeps Anvil's sequence state (records are copied) and the conversation
+    history, so an edited prompt applies to the next message without a
+    restart.
+  - Tracing: each run's trace records bundle_revision.
+- UI: server-rendered (Jinja2) like Anvil's registry, under /ui. Pages: sign
+  up, log in, apps list, app detail (tools, agents with prompt history and
+  rollback, flows, grants, keys with create/revoke), and the audit log.
+  Writes go through the same /v1 API with the CSRF header. A nav slot is
+  reserved for 4c's trace views.
+- Deploy: `anvil-forge-server serve` (uvicorn), `create-user`, `migrate`;
+  server/Dockerfile; a README section.
 
 ================ 4c: Dashboard (later) ================
 - POST /traces (app key): write-only, own app only.
