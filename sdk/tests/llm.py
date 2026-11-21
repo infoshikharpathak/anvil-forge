@@ -21,7 +21,7 @@ CLASSIFIER_MARKER = "injection-detection classifier"
 
 class _Script:
     def __init__(self, scripts: dict[str, list[dict]], injection_words=()):
-        self.scripts = {k: list(v) for k, v in scripts.items()}
+        self.scripts = {k: v if callable(v) else list(v) for k, v in scripts.items()}
         self.requests: dict[str, list[dict]] = {}
         self.classifier_requests: list[str] = []
         self.injection_words = tuple(injection_words)
@@ -34,6 +34,8 @@ class _Script:
     def _next(self, system: str, kwargs: dict) -> dict:
         self.requests.setdefault(system, []).append(kwargs)
         steps = self.scripts.get(system)
+        if callable(steps):  # a responder: step = fn(request kwargs)
+            return steps(kwargs)
         if not steps:
             raise AssertionError(f"no scripted reply left for agent with prompt {system[:60]!r}")
         return steps.pop(0)

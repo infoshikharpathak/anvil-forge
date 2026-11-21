@@ -32,10 +32,22 @@ ToolCallObserver = Callable[[RunContext, str, str, dict, dict], None]
 
 
 class AnvilToolSource:
-    def __init__(self, anvil: Anvil, app: str, *, observer: ToolCallObserver | None = None) -> None:
+    """*anvil* is the Anvil instance to execute through. Pass *anvil_for* to
+    pick one per call from the RunContext instead (the Platform gives each
+    run its own Anvil session); it may return None to fall back to *anvil*."""
+
+    def __init__(
+        self,
+        anvil: Anvil,
+        app: str,
+        *,
+        observer: ToolCallObserver | None = None,
+        anvil_for: Callable[[RunContext], Anvil | None] | None = None,
+    ) -> None:
         self._anvil = anvil
         self._app = app
         self._observer = observer
+        self._anvil_for = anvil_for
 
     def visible_tool_ids(self) -> list[str]:
         """The app's own tools plus tools granted to it, as canonical IDs."""
@@ -59,9 +71,10 @@ class AnvilToolSource:
 
     async def call(self, name: str, args: dict[str, Any], ctx: RunContext) -> str:
         tool_id = resolve(name, self._app)
+        anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
         try:
-            response = await self._anvil.execute(
-                agent_id=anvil_agent_id(ctx.agent_name, self._app, self._anvil.policy_engine.policy.agents),
+            response = await anvil.execute(
+                agent_id=anvil_agent_id(ctx.agent_name, self._app, anvil.policy_engine.policy.agents),
                 tool_name=tool_id,
                 params=args,
                 trace_id=ctx.trace_id,
