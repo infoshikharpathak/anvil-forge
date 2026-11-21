@@ -1,0 +1,49 @@
+{# Shared bits for the trace views. #}
+{% macro badge(status) -%}
+<span class="badge {{ status }}">{{ status }}</span>
+{%- endmacro %}
+
+{% macro tabs(app, tab) -%}
+<h1>{{ app.name }}</h1>
+<nav class="tabs" aria-label="{{ app.name }} sections">
+  <a href="/ui/apps/{{ app.name }}/dashboard" class="{{ 'on' if tab == 'dashboard' }}">Dashboard</a>
+  <a href="/ui/apps/{{ app.name }}/traces" class="{{ 'on' if tab == 'traces' }}">Traces</a>
+  <a href="/ui/apps/{{ app.name }}" class="{{ 'on' if tab == 'config' }}">Config</a>
+</nav>
+{%- endmacro %}
+
+{% macro trace_table(rows, app_name, show_app=False) -%}
+<table>
+  <thead><tr><th>Time (UTC)</th>{% if show_app %}<th>App</th>{% endif %}<th>Agent</th><th>Session</th><th>Status</th>
+    <th>Model</th><th class="num">Tokens</th><th class="num">Duration</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    {% set a = r.app or app_name %}
+    <tr>
+      <td class="mono"><a href="/ui/apps/{{ a }}/traces/{{ r.trace_id }}?run={{ r.run_id }}">{{ r.started_at|dt }}</a></td>
+      {% if show_app %}<td><a href="/ui/apps/{{ a }}/dashboard">{{ a }}</a></td>{% endif %}
+      <td>{{ r.agent }}{% if r.flow %} <span class="sub-inline">via {{ r.flow }}</span>{% endif %}</td>
+      <td class="mono">{% if r.session_id %}<a href="/ui/apps/{{ a }}/sessions/{{ r.session_id|urlencode }}" title="{{ r.session_id }}">{{ r.session_id|short }}</a>{% else %}—{% endif %}</td>
+      <td>{{ badge(r.status) }}{% if r.violations %} <span class="sub-inline" title="Anvil violations in this run">{{ r.violations }} viol.</span>{% endif %}</td>
+      <td class="mono">{{ r.model or '—' }}</td>
+      <td class="num" title="{{ r.token_input|num }} in + {{ r.token_output|num }} out">{{ r.tokens|num }}</td>
+      <td class="num">{{ r.duration_ms|ms }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{%- endmacro %}
+
+{% macro chart_svg(chart, label) -%}
+<svg class="chart" viewBox="0 0 {{ chart.width }} {{ chart.height + 22 }}" role="img" aria-label="{{ label }}" preserveAspectRatio="none">
+  {% for d in chart.days %}
+    <line x1="{{ d.x }}" x2="{{ d.x }}" y1="0" y2="{{ chart.height }}" class="grid"/>
+    <text x="{{ d.x + 4 }}" y="{{ chart.height + 16 }}" class="axis">{{ d.label }}</text>
+  {% endfor %}
+  <line x1="0" x2="{{ chart.width }}" y1="{{ chart.height - 6 }}" y2="{{ chart.height - 6 }}" class="grid"/>
+  <polyline points="{{ chart.total }}" class="line total" vector-effect="non-scaling-stroke"/>
+  <polyline points="{{ chart.problems }}" class="line problems" vector-effect="non-scaling-stroke"/>
+</svg>
+<p class="legend"><span class="key total"></span>All traces <span class="key problems"></span>Blocked or error
+  · peak {{ chart.peak }} per hour · {{ chart.sum|num }} in 7 days</p>
+{%- endmacro %}

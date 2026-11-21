@@ -26,7 +26,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     from fastapi.staticfiles import StaticFiles
 
-    from .routes import auth, keys, manage, portable, sdk, traces, ui
+    from .routes import auth, dashboard, keys, manage, portable, sdk, traces, ui
     from .workspace import ChangeRejected, NotFound
 
     app.include_router(auth.router)
@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(traces.router)
     app.include_router(portable.router)
     app.include_router(ui.router)
+    app.include_router(dashboard.router)
     app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
 
     @app.exception_handler(NotFound)

@@ -9,7 +9,8 @@
     <thead><tr><th>App</th><th>Base URL</th><th>Agents</th><th>Tools</th><th>Revision</th><th>Updated</th></tr></thead>
     <tbody>
     {% for a in apps %}
-      <tr><td><a href="/ui/apps/{{ a.name }}"><strong>{{ a.name }}</strong></a></td>
+      <tr><td><a href="/ui/apps/{{ a.name }}/dashboard"><strong>{{ a.name }}</strong></a>
+          <a href="/ui/apps/{{ a.name }}" class="sub-inline">config</a></td>
         <td class="mono">{{ a.base_url or "—" }}</td><td>{{ a.agents }}</td><td>{{ a.tools }}</td>
         <td class="mono">{{ a.revision }}</td><td>{{ a.updated_at.strftime('%Y-%m-%d %H:%M') }}</td></tr>
     {% endfor %}

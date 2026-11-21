@@ -24,6 +24,29 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent
 router = APIRouter(include_in_schema=False)
 
 
+def _ms(value) -> str:
+    if value is None:
+        return "—"
+    value = float(value)
+    return f"{value:.0f} ms" if value < 1000 else f"{value / 1000:.2f} s" if value < 60_000 else f"{value / 60_000:.1f} min"
+
+
+def _dt(value) -> str:
+    return value.strftime("%Y-%m-%d %H:%M:%S") if value else "—"
+
+
+def _num(value) -> str:
+    return f"{int(value or 0):,}"
+
+
+def _short(value, n: int = 12) -> str:
+    value = str(value or "")
+    return value if len(value) <= n else value[: n - 1] + "…"
+
+
+templates.env.filters.update(ms=_ms, dt=_dt, num=_num, short=_short)
+
+
 def _page(request: Request, name: str, **ctx) -> HTMLResponse:
     return templates.TemplateResponse(request, name, ctx)
 

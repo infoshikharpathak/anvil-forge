@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, tabs, trace_table, chart_svg %}
+{% block title %}{{ app.name }} dashboard · bastion{% endblock %}
+{% block content %}
+{{ tabs(app, tab) }}
+<p class="sub">Runs reported by the SDK's DashboardSink. Times are UTC.
+  {% if content_on %}This app sends content (prompts and responses, redacted).{% else %}Metadata only: this app doesn't send prompts or responses.{% endif %}</p>
+
+<h2>Today</h2>
+<div class="tiles">
+  <div class="tile"><span class="label">Traces</span><span class="value">{{ today.total|num }}</span></div>
+  <div class="tile ok"><span class="label">Success</span><span class="value">{{ today.success|num }}</span></div>
+  <div class="tile warn"><span class="label">Blocked</span><span class="value">{{ today.blocked|num }}</span></div>
+  <div class="tile bad"><span class="label">Error</span><span class="value">{{ today.error|num }}</span></div>
+  <div class="tile"><span class="label">Tokens</span><span class="value">{{ today.tokens|num }}</span>
+    <span class="label">{{ today.token_input|num }} in · {{ today.token_output|num }} out</span></div>
+</div>
+
+<h2>Traces over time</h2>
+<div class="panel">
+  {% if chart.sum %}{{ chart_svg(chart, "Traces per hour over the last 7 days") }}
+  {% else %}<p class="sub" style="margin:0">No traces in the last 7 days.</p>{% endif %}
+</div>
+
+{% if not week.total and not recent %}
+<div class="panel">
+  <h2 style="margin-top:0">No traces yet</h2>
+  <p>Create an app key below in <a href="/ui/apps/{{ app.name }}#keys">Config</a>, then run the app with</p>
+  <pre>BASTION_URL={{ request.base_url|string|trim('/') }}
+BASTION_KEY=bk_...</pre>
+  <p class="sub" style="margin:0">In remote mode the SDK sends every run here. The local trace file keeps the full detail.</p>
+</div>
+{% endif %}
+
+<div class="cols">
+  <div>
+    <h2>Agents, last 7 days</h2>
+    <div class="panel scroll">
+      <table><thead><tr><th>Agent</th><th class="num">Traces</th><th class="num">Avg response</th><th class="num">Tokens</th></tr></thead><tbody>
+      {% for a in agents %}
+        <tr><td><a href="/ui/apps/{{ app.name }}/traces?agent={{ a.agent|urlencode }}">{{ a.agent }}</a></td>
+          <td class="num">{{ a.count|num }}</td><td class="num">{{ a.avg_ms|ms }}</td><td class="num">{{ a.tokens|num }}</td></tr>
+      {% else %}<tr><td colspan="4" class="sub">No runs.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+  <div>
+    <h2>Last 7 days</h2>
+    <div class="panel">
+      <p class="kv"><span>Traces</span><strong>{{ week.total|num }}</strong></p>
+      <p class="kv"><span>Blocked</span><strong>{{ week.blocked|num }}</strong></p>
+      <p class="kv"><span>Errors</span><strong>{{ week.error|num }}</strong></p>
+      <p class="kv"><span>Tokens</span><strong>{{ week.tokens|num }}</strong></p>
+      <p class="kv"><span>Est. cost</span><strong>${{ '%.4f'|format(week.cost_usd) }}</strong></p>
+    </div>
+  </div>
+</div>
+
+<h2>Recent blocked traces</h2>
+<div class="panel scroll">
+  {% if blocked %}{{ trace_table(blocked, app.name) }}
+  {% else %}<p class="sub" style="margin:0">Nothing blocked.</p>{% endif %}
+</div>
+
+<h2>Latest traces</h2>
+<div class="panel scroll">
+  {% if recent %}{{ trace_table(recent, app.name) }}
+    <p style="margin:10px 0 0"><a href="/ui/apps/{{ app.name }}/traces">All traces →</a></p>
+  {% else %}<p class="sub" style="margin:0">No traces yet.</p>{% endif %}
+</div>
+{% endblock %}

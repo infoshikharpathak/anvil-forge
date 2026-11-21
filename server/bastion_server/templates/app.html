@@ -1,12 +1,13 @@
 {% extends "base.html" %}
+{% from "_macros.html" import tabs %}
 {% block title %}{{ app.name }} · bastion{% endblock %}
 {% block content %}
-<h1>{{ app.name }}</h1>
+{{ tabs(app, 'config') }}
 <p class="sub">Revision <span class="mono">{{ revision }}</span>
   {% if app.base_url %}· <span class="mono">{{ app.base_url }}</span>{% endif %}
   {% if app.auth %}· auth header <code>{{ app.auth.header }}</code> from env <code>{{ app.auth.secret_env }}</code>{% endif %}
   · <a href="/v1/apps/{{ app.name }}/export">Export YAML</a></p>
-<nav class="tabs">
+<nav class="tabs jump">
   <a href="#agents">Agents ({{ agents|length }})</a><a href="#tools">Tools ({{ tools|length }})</a>
   <a href="#flows">Flows ({{ flows|length }})</a><a href="#grants">Grants ({{ grants|length }})</a>
   <a href="#keys">App keys ({{ keys|selectattr('active')|list|length }})</a>
@@ -25,7 +26,7 @@
   <details><summary>Version history ({{ versions[ag.name]|length }})</summary>
     <table><thead><tr><th>Version</th><th>Created</th><th>Instructions</th><th></th></tr></thead><tbody>
     {% for v in versions[ag.name] %}
-      <tr><td class="mono">{{ v.label }}{% if v.active %} <span class="pill">active</span>{% endif %}</td>
+      <tr id="v-{{ ag.name }}-{{ v.label }}"><td class="mono">{{ v.label }}{% if v.active %} <span class="pill">active</span>{% endif %}</td>
         <td>{{ v.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
         <td><pre>{{ v.instructions[:400] }}{% if v.instructions|length > 400 %}…{% endif %}</pre></td>
         <td>{% if not v.active %}<button class="ghost" data-api="POST /v1/apps/{{ app.name }}/agents/{{ ag.name }}/rollback" data-body='{"version": {{ v.version }}}'>Make active</button>{% endif %}</td></tr>
@@ -69,7 +70,7 @@
 
 <h2 id="keys">App keys</h2>
 <div class="panel" data-status>
-  <p class="sub">An app key lets the SDK fetch this app's bundle, and nothing else. It's shown once; only its hash is stored.</p>
+  <p class="sub">An app key lets the SDK fetch this app's bundle and send its traces, and nothing else. It's shown once; only its hash is stored.</p>
   <table><thead><tr><th>Name</th><th>Key</th><th>Created</th><th>Last used</th><th></th></tr></thead><tbody>
   {% for k in keys %}
     <tr><td>{{ k.name or '—' }}</td><td class="mono">{{ k.prefix }}…</td><td>{{ k.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
