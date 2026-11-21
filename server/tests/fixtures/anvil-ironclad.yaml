@@ -1,0 +1,250 @@
+# anvil-forge config for Ironclad: the ironclad app, its tools, and the
+# banking agent. anvil-forge compiles the agent's tools, sequences,
+# strictness and trust overrides into the Anvil policy that governs every
+# call, so that policy is the single source of truth for what the agent may do.
+# Tool IDs are "ironclad.<tool>", agent IDs "ironclad.<agent>"; inside an
+# ironclad agent, bare tool names resolve to ironclad's tools.
+apps:
+  ironclad:
+    base_url: "http://localhost:8001"
+    # If the bank service starts requiring a token, Anvil injects it per call:
+    # auth:
+    #   header: Authorization
+    #   secret_env: IRONCLAD_BANK_TOKEN
+    #   prefix: "Bearer "
+    # Registry callers for this app (store the SHA-256 of the key, never the key):
+    # api_keys:
+    #   ironclad-agent-service: "<sha256 hex>"
+    tools:
+      # ── Read-only tools (trusted — no side effects) ──────────────────
+      get_accounts:
+        path: "/accounts"
+        method: GET
+        description: "List all accounts for a user. Returns account IDs, names, types, and balances."
+        trust: trusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties:
+            user_id:
+              type: string
+              description: "The user whose accounts to list"
+          required: [user_id]
+        response_schema:
+          required_fields: ["accounts"]
+
+      get_account:
+        path: "/accounts/{account_id}"
+        method: GET
+        description: "Get details for a single account. Requires ownership."
+        trust: trusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties:
+            account_id:
+              type: string
+              description: "The account ID to look up"
+            user_id:
+              type: string
+              description: "The requesting user"
+          required: [account_id, user_id]
+        response_schema:
+          required_fields: ["id", "name", "account_type", "balance", "currency"]
+
+      get_transactions:
+        path: "/accounts/{account_id}/transactions"
+        method: GET
+        description: "List recent transactions for an account. Returns newest first."
+        trust: trusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties:
+            account_id:
+              type: string
+              description: "The account to get transactions for"
+            user_id:
+              type: string
+              description: "The requesting user"
+            limit:
+              type: integer
+              description: "Max transactions to return (1-100, default 20)"
+            offset:
+              type: integer
+              description: "Pagination offset"
+          required: [account_id, user_id]
+        response_schema:
+          required_fields: ["transactions"]
+
+      lookup_account:
+        path: "/directory/lookup/{account_number}"
+        method: GET
+        description: "Look up any account by its public account number. Returns owner name, type, currency. No balance exposed. Use this to verify a recipient before sending money."
+        trust: trusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties:
+            account_number:
+              type: string
+              description: "The public account number (e.g. ACC-10042-CHK)"
+          required: [account_number]
+        response_schema:
+          required_fields: ["account_number", "owner_name", "account_type", "currency"]
+
+      list_directory:
+        path: "/directory"
+        method: GET
+        description: "List all publicly discoverable accounts (people you can send money to)."
+        trust: trusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties: {}
+        response_schema:
+          required_fields: ["accounts"]
+
+      get_transfer_status:
+        path: "/transfers/{transfer_id}/status"
+        method: GET
+        description: "Check the current status of a transfer."
+        trust: trusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties:
+            transfer_id:
+              type: string
+              description: "The transfer ID to check"
+            user_id:
+              type: string
+              description: "The requesting user"
+          required: [transfer_id, user_id]
+        response_schema:
+          required_fields: ["transfer"]
+
+      # ── Write tools (untrusted — move money, need governance) ────────
+      initiate_transfer:
+        path: "/transfers/initiate"
+        method: POST
+        description: "Initiate a money transfer between accounts. Creates a pending transfer that requires OTP confirmation. The agent CANNOT confirm the OTP — only the human user can."
+        trust: untrusted
+        timeout: 10
+        injection_scanning: true
+        # Defense in depth: bank-service no longer returns the OTP, but if any
+        # version ever does, Anvil strips it before the agent or a trace sees it.
+        redact_fields: [otp_code]
+        parameters:
+          type: object
+          properties:
+            user_id:
+              type: string
+              description: "The user initiating the transfer"
+            from_account:
+              type: string
+              description: "Source account ID"
+            to_account:
+              type: string
+              description: "Destination account ID (can be external)"
+            amount:
+              type: number
+              description: "Amount to transfer in USD"
+            description:
+              type: string
+              description: "Transfer description / memo"
+            idempotency_key:
+              type: string
+              description: "Unique key to prevent duplicate transfers"
+            initiated_by:
+              type: string
+              description: "Who initiated: 'agent' for AI-initiated transfers"
+          required: [user_id, from_account, to_account, amount]
+        response_schema:
+          required_fields: ["transfer_id", "status", "amount"]
+
+      reset_accounts:
+        path: "/accounts/reset"
+        method: POST
+        description: "Reset demo accounts to seed balances. Deletes all transactions."
+        trust: untrusted
+        timeout: 5
+        injection_scanning: false
+        parameters:
+          type: object
+          properties:
+            user_id:
+              type: string
+              description: "The user whose accounts to reset"
+          required: [user_id]
+        response_schema:
+          required_fields: ["status", "accounts"]
+
+# ── Agents ───────────────────────────────────────────────────────
+agents:
+  ironclad.banking_agent:
+    description: "Governance policy for AI agents operating on Ironclad Bank. Agents must look up accounts before transferring, and can never confirm OTPs."
+    prompt_version: v1
+    backend: openai
+    model: gpt-4o-mini   # agent-service's OPENAI_MODEL env var overrides this
+    instructions: |
+      You are the Ironclad Bank AI Assistant. You help the user manage their bank accounts.
+
+      You can:
+      - Check account balances (get_accounts)
+      - View transaction history (get_transactions)
+      - Look up people to send money to (list_directory, lookup_account)
+      - Initiate transfers (initiate_transfer) — these require OTP confirmation from the user
+      - Check transfer status (get_transfer_status)
+
+      Important rules:
+      - The user is "demo_user". Always use this user_id.
+      - Before initiating a transfer, ALWAYS call get_accounts first to see the user's accounts, then lookup_account to verify the recipient. Anvil governance enforces this — skipping these steps will block the transfer.
+      - You can NEVER confirm an OTP. After initiating a transfer, tell the user to check the OTP modal in the bank dashboard to confirm it.
+      - When initiating transfers, always set initiated_by to "agent".
+      - Be concise and helpful. Format currency amounts properly.
+      - If a tool call is blocked by governance, explain what happened and what steps are needed.
+    tools:
+      - get_accounts
+      - get_account
+      - get_transactions
+      - lookup_account
+      - list_directory
+      - get_transfer_status
+      - initiate_transfer
+    sequences:
+      # Must look up the source account before initiating a transfer
+      - before: initiate_transfer
+        requires: [get_accounts]
+        match_fields: [user_id]
+      # Must look up the recipient before sending to an external account
+      - before: initiate_transfer
+        requires: [lookup_account]
+        match_fields: []
+    strictness: strict
+    trust_overrides:
+      # Read tools are trusted, but transfers are untrusted (default)
+      get_accounts: trusted
+      get_account: trusted
+      get_transactions: trusted
+      lookup_account: trusted
+      list_directory: trusted
+
+# Injection classifier for Anvil's scans: same provider and key as the agent.
+classifier:
+  enabled: true
+  provider: openai
+  model: gpt-4o-mini
+
+settings:
+  injection_scanning: true
+  default_strictness: strict
+  default_trust: untrusted
+  session_ttl: 3600
+  trace_fallback_dir: "./anvil_traces"

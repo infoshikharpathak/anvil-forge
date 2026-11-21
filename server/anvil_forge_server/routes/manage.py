@@ -133,6 +133,12 @@ def _dump(model: BaseModel) -> dict[str, Any]:
     return model.model_dump(exclude_none=True, exclude_defaults=False)
 
 
+def _authored(model: BaseModel, exclude: set[str] | None = None) -> dict[str, Any]:
+    """Only the fields that were actually given, so a stored tool is exactly
+    what was authored (no defaults added) and round-trips byte-identical."""
+    return model.model_dump(exclude_unset=True, exclude=exclude or set())
+
+
 def app_view(db: Session, app: App) -> dict[str, Any]:
     rev = latest_revision(db, app)
     return {
@@ -241,7 +247,7 @@ def create_tool(app_name: str, body: ToolIn, db: Session = Depends(get_db), user
     app = user_app(db, user, app_name)
     if db.scalar(select(Tool).where(Tool.app_id == app.id, Tool.name == body.name)):
         raise HTTPException(409, f"Tool {body.name!r} already exists in {app.name!r}.")
-    tool = Tool(app_id=app.id, name=body.name, spec=_dump(ToolSpec(**body.model_dump(exclude={"name"}))))
+    tool = Tool(app_id=app.id, name=body.name, spec=_authored(body, {"name"}))
     db.add(tool)
     commit_change(db, user, [app], action="create", entity_type="tool", entity_name=f"{app.name}.{tool.name}",
                   audit_app=app, after=tool)
@@ -260,7 +266,7 @@ def replace_tool(app_name: str, tool_name: str, body: ToolSpec, db: Session = De
     app = user_app(db, user, app_name)
     tool = child(db, Tool, app, tool_name)
     before = {"name": tool.name, "spec": dict(tool.spec)}
-    tool.spec = _dump(body)
+    tool.spec = _authored(body)
     commit_change(db, user, [app], action="update", entity_type="tool", entity_name=f"{app.name}.{tool.name}",
                   audit_app=app, before=before, after=tool)
     return {"name": tool.name, **tool.spec}
