@@ -53,6 +53,7 @@ class RunCollector:
     kind: str  # "agent" | "flow"
     target: str  # qualified agent or flow ID
     message: str
+    session_id: str | None = None
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     _t0: float = field(default_factory=time.perf_counter, repr=False)
     inputs: dict[str, list[str]] = field(default_factory=dict)
@@ -130,11 +131,14 @@ class TraceRecorderHooks(AgentHooks):
 
 # ── merging ───────────────────────────────────────────────────────────────────
 
-def _anvil_records(anvil: Anvil, trace_id: str, agent_ids: list[str]) -> list[dict]:
+def _anvil_records(anvil: Anvil, trace_id: str, agent_ids: list[str], since: str) -> list[dict]:
+    """This run's records: matching trace_id, and made since the run began.
+    A session's Anvil holds earlier turns too, possibly under the same
+    caller trace_id."""
     records = []
     for agent_id in agent_ids:
         for call in anvil.call_log.calls_for(anvil.session_id, agent_id):
-            if call.trace_id == trace_id:
+            if call.trace_id == trace_id and call.timestamp >= since:
                 records.append(call.model_dump(mode="json"))
     records.sort(key=lambda r: r["timestamp"])
     return records
@@ -159,7 +163,7 @@ def build_trace(
     agent_ids = list(dict.fromkeys(
         list(registered) + [anvil_agent_id(a, collector.app, registered) for a in collector.agents_seen]
     ))
-    anvil_records = _anvil_records(anvil, collector.trace_id, agent_ids)
+    anvil_records = _anvil_records(anvil, collector.trace_id, agent_ids, collector.started_at)
 
     per_agent_seen: dict[str, int] = {}
     agents = []
@@ -207,6 +211,7 @@ def build_trace(
     return {
         "trace_id": collector.trace_id,
         "run_id": collector.run_id,
+        "session_id": collector.session_id,
         "app": collector.app,
         "kind": collector.kind,
         "target": collector.target,

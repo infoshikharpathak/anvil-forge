@@ -54,6 +54,7 @@ That run is checked by Anvil at every step: the input, each tool call, and the o
   - Exporting never blocks or fails a run.
 
 ```python
+await platform.run_agent("support_agent", message, session_id="chat-42")  # multi-turn
 await platform.run_flow("dispute_flow", message)   # a graph of registered agents
 platform.list_agents(); platform.list_tools(); platform.list_flows()
 Platform.from_config(cfg, app="ironclad", sinks=[LocalSink("traces/run.jsonl")])
@@ -72,7 +73,12 @@ Platform.from_config(cfg, app="ironclad", sinks=[LocalSink("traces/run.jsonl")])
 
 ## Things to know
 
-- Each run gets its own Anvil session, so sequence rules (for example, "look up the account before transferring") apply within one run.
+- **Sessions.** Pass `session_id=` to `run_agent` or `run_flow` to carry a conversation across turns. Without one, every run starts clean.
+  - **Shared Anvil state:** runs in one session share one Anvil session, so sequence rules span messages (verify in one turn, transfer in the next).
+  - **Agent memory:** `run_agent` reuses the agent, so it remembers the conversation. Flow agents start fresh each turn.
+  - **Ordering:** turns in the same session are serialized.
+  - **Expiry:** sessions expire after Anvil's `session_ttl` without use, and `end_session(id)` ends one early.
+  - **Traces:** every turn still gets its own trace, tagged with `session_id`.
 - Tool names live in Agent Forge's process-wide registry. Run one `Platform` per app per process. A tool can't reuse a built-in Agent Forge tool name (such as `web_search`).
 - Agent Forge's graph runner retries a node whose output is under 50 characters.
 - Backends: OpenAI and Anthropic. The Anthropic path is tested with stubs only; the live smoke test uses OpenAI.

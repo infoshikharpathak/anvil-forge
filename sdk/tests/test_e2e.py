@@ -179,3 +179,26 @@ async def test_live_openai_smoke(monkeypatch):
     assert "CHK-1" in reply.content
     assert reply.trace["agents"][0]["input_tokens"] > 0 and reply.trace["scans"]["calls"] > 0
     assert db.get_run(reply.run_id)["trace_id"] == "live-1"
+
+
+@pytest.mark.skipif(not _REAL_KEY or _REAL_KEY.startswith("dummy"), reason="no OPENAI_API_KEY set")
+async def test_live_openai_session_memory_and_cross_turn_sequence(monkeypatch):
+    """Two real turns in one session. Turn 1 looks accounts up. Turn 2 must
+    remember them, and the transfer is allowed because turn 1 satisfied
+    the sequence rule. This also checks the real API accepts the carried-over
+    tool-call history."""
+    cfg = base_config()
+    cfg["agents"]["ironclad.support_agent"].update(
+        model=None,
+        instructions=("You are a bank support agent for user_id 'u1'. Use get_accounts to look up accounts. "
+                      "When asked to transfer, call initiate_transfer with user_id 'u1' and the amount."),
+    )
+    p, upstream = platform(monkeypatch, config=cfg)
+    first = await p.run_agent("support_agent", "What accounts do I have?", session_id="live-chat")
+    second = await p.run_agent("support_agent", "Transfer $50. Also, what was my account ID again?",
+                               session_id="live-chat")
+    assert first.status == second.status == "success"
+    assert "CHK-1" in second.content
+    transfers = [c for c in second.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
+    assert transfers and transfers[-1]["success"] is True, second.trace["tool_calls"]
+    assert upstream.paths().count("/transfers") == 1
