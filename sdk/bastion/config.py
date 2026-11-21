@@ -107,6 +107,20 @@ class ClassifierDef(BaseModel):
     model: str | None = None
 
 
+class DashboardDef(BaseModel):
+    """Where DashboardSink sends traces. ``url`` and ``key`` default to the
+    BASTION_URL and BASTION_KEY env vars; prefer those to writing a key into
+    the file. Only metadata is sent unless ``include_content`` is true."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str | None = None
+    key: str | None = None
+    include_content: bool = False
+    flush_interval: float = Field(default=5.0, gt=0)
+    batch_size: int = Field(default=20, ge=1, le=100)
+
+
 class PlatformConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -117,6 +131,7 @@ class PlatformConfig(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
     """Passed through to Anvil's settings (injection_scanning, strictness, ...)."""
     classifier: ClassifierDef = Field(default_factory=ClassifierDef)
+    dashboard: DashboardDef | None = None
 
     @model_validator(mode="after")
     def _qualified_ids(self) -> PlatformConfig:

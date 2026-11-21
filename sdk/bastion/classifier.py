@@ -92,15 +92,20 @@ class ProviderClassifier:
             u = resp.usage
             usage = (u.prompt_tokens, u.completion_tokens) if u else (0, 0)
 
-        self._report(usage)
-
-        match = _JSON_OBJECT.search(content)
-        verdict = json.loads(match.group(0) if match else content)  # raises -> Anvil uses regex
+        try:
+            match = _JSON_OBJECT.search(content)
+            verdict = json.loads(match.group(0) if match else content)
+        except ValueError:
+            self._report(usage, detected=None, pattern=None)  # unreadable: Anvil falls back to regex
+            raise
         if verdict.get("injection"):
-            return InjectionResult(detected=True, matched_pattern=f"llm:{verdict.get('pattern', 'detected')}")
+            pattern = f"llm:{verdict.get('pattern', 'detected')}"
+            self._report(usage, detected=True, pattern=pattern)
+            return InjectionResult(detected=True, matched_pattern=pattern)
+        self._report(usage, detected=False, pattern=None)
         return InjectionResult(detected=False)
 
-    def _report(self, usage: tuple[int, int]) -> None:
+    def _report(self, usage: tuple[int, int], *, detected: bool | None, pattern: str | None) -> None:
         if self._on_usage is None:
             return
         self._on_usage(current_run_context(), {
@@ -109,6 +114,8 @@ class ProviderClassifier:
             "input_tokens": usage[0],
             "output_tokens": usage[1],
             "cost_usd": round(_estimate_cost(self.model, *usage), 6),
+            "detected": detected,  # None: the reply wasn't a verdict, so Anvil used its regex scan
+            "pattern": pattern,
         })
 
 

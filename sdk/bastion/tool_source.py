@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import TYPE_CHECKING, Any, Callable
 
 from agent_forge.core.context import RunContext
@@ -27,8 +28,9 @@ log = logging.getLogger(__name__)
 
 _EMPTY_SCHEMA = {"type": "object", "properties": {}}
 
-# (ctx, called_name, tool_id, args, response_dict) -> None
-ToolCallObserver = Callable[[RunContext, str, str, dict, dict], None]
+# (ctx, called_name, tool_id, args, response_dict, timing) -> None, where
+# timing is {"started": perf_counter(), "duration_ms": float}.
+ToolCallObserver = Callable[[RunContext, str, str, dict, dict, dict], None]
 
 # (ctx, called_name, args) -> args. Lets the app fill in parameters the model
 # must not choose (the signed-in user's ID, idempotency keys) before Anvil
@@ -79,6 +81,7 @@ class AnvilToolSource:
     async def call(self, name: str, args: dict[str, Any], ctx: RunContext) -> str:
         tool_id = resolve(name, self._app)
         anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
+        started = time.perf_counter()
         try:
             if self._prepare is not None:
                 args = dict(self._prepare(ctx, name, dict(args)))
@@ -102,9 +105,10 @@ class AnvilToolSource:
                     "call_history": [],
                 },
             }
+        timing = {"started": started, "duration_ms": round((time.perf_counter() - started) * 1000, 1)}
         if self._observer is not None:
             try:
-                self._observer(ctx, name, tool_id, args, payload)
+                self._observer(ctx, name, tool_id, args, payload, timing)
             except Exception:
                 log.exception("[anvil_tool_source] observer failed")
         # A JSON string reads the same on every backend (some str() dicts).

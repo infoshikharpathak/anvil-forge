@@ -109,6 +109,8 @@ def build_bundle(db: Session, app: App) -> dict[str, Any]:
         bundle["settings"] = dict(app.settings)
     if app.classifier:
         bundle["classifier"] = dict(app.classifier)
+    if app.dashboard:
+        bundle["dashboard"] = dict(app.dashboard)
     return bundle
 
 

@@ -17,7 +17,7 @@ from ..workspace import (
     NotFound, active_version, add_prompt_version, build_bundle, child, commit_change, latest_revision,
     summary, user_app,
 )
-from .manage import AgentSpec, AppIn, AuthIn, FlowSpec, ToolSpec, _dump
+from .manage import DashboardIn, AgentSpec, AppIn, AuthIn, FlowSpec, ToolSpec, _dump
 
 router = APIRouter(prefix="/v1/apps/{app_name}", tags=["import-export"], dependencies=[Depends(csrf)])
 
@@ -72,6 +72,15 @@ async def import_config(app_name: str, request: Request, db: Session = Depends(g
     app.auth = _strict(AuthIn, section["auth"], "auth") if section.get("auth") else None
     app.settings = dict(doc.get("settings") or {})
     app.classifier = dict(doc.get("classifier") or {})
+    dash = dict(doc.get("dashboard") or {})
+    if dash.get("key"):
+        raise HTTPException(422, "dashboard.key: the service never stores app keys. Remove it from the "
+                                 "file and give the app its key through BASTION_KEY.")
+    dash.pop("key", None)
+    dash.pop("url", None)  # the app's own setting (BASTION_URL), not part of its bundle
+    for local_only in ("flush_interval", "batch_size"):
+        dash.pop(local_only, None)
+    app.dashboard = _strict(DashboardIn, dash, "dashboard") if dash else {}
 
     # tools: replace
     tools_in = section.get("tools") or {}

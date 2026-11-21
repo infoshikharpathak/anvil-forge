@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -45,7 +46,9 @@ from .config import POLICY_NAME, CompiledConfig, ConfigError, load_config
 from .remote import BundleClient, BundleResult, ServiceError
 from .hooks import AnvilHooks
 from .tool_source import AnvilToolSource
-from .trace import Collectors, LocalSink, RunCollector, TraceExporter, TraceRecorderHooks, TraceSink, build_trace
+from .trace import (
+    Collectors, DashboardSink, LocalSink, RunCollector, TraceExporter, TraceRecorderHooks, TraceSink, build_trace,
+)
 
 log = logging.getLogger(__name__)
 
@@ -70,6 +73,25 @@ def _cached_or_fail(client: BundleClient, url: str, error: Exception) -> BundleR
             f"at {client.cache_path}. Start the service, or run once while it's up to create the cache."
         ) from None
     return cached
+
+
+def _library_dashboard(compiled: CompiledConfig, transport: Any = None) -> DashboardSink | None:
+    """Library mode's DashboardSink: from the YAML's dashboard section, with
+    url and key falling back to BASTION_URL and BASTION_KEY. Those env vars
+    alone also turn it on (metadata only)."""
+    d = compiled.platform.dashboard
+    env_url, env_key = os.environ.get("BASTION_URL"), os.environ.get("BASTION_KEY")
+    if d is None and not (env_url and env_key):
+        return None
+    url = (d.url if d else None) or env_url
+    key = (d.key if d else None) or env_key
+    if not url or not key:
+        log.warning("[platform] the config has a dashboard section but no %s; traces stay local. "
+                    "Set BASTION_URL and BASTION_KEY.", "url" if not url else "key")
+        return None
+    return DashboardSink(url, key, include_content=d.include_content if d else False,
+                         flush_interval=d.flush_interval if d else 5.0, batch_size=d.batch_size if d else 20,
+                         transport=transport)
 
 
 @dataclass
@@ -140,6 +162,9 @@ class Platform:
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
         self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
+        self.dashboard: DashboardSink | None = next(
+            (s for s in self._exporter.sinks if isinstance(s, DashboardSink)), None)
+        self._content_override: bool | None = None  # from_service(include_content=...) beats the bundle
         self._started = False
         self._lock = asyncio.Lock()
         self._remote: _Remote | None = None
@@ -171,8 +196,20 @@ class Platform:
         )
 
     @classmethod
-    def from_config(cls, source: str | Path | dict, app: str, **kwargs: Any) -> Platform:
-        return cls(load_config(source), app, **kwargs)
+    def from_config(
+        cls, source: str | Path | dict, app: str, *, dashboard: bool = True,
+        dashboard_transport: Any = None, **kwargs: Any,
+    ) -> Platform:
+        """Library mode. Traces go to a LocalSink, plus a DashboardSink when
+        the config has a ``dashboard`` section or BASTION_URL and BASTION_KEY
+        are set (``dashboard=False`` turns that off). Passing ``sinks=``
+        replaces both."""
+        compiled = load_config(source)
+        if "sinks" not in kwargs and dashboard:
+            sink = _library_dashboard(compiled, dashboard_transport)
+            if sink is not None:
+                kwargs["sinks"] = [LocalSink(), sink]
+        return cls(compiled, app, **kwargs)
 
     @classmethod
     def from_service(
@@ -183,6 +220,9 @@ class Platform:
         cache_dir: str | Path | None = None,
         refresh_interval: float = 30.0,
         service_transport: Any = None,
+        dashboard: bool = True,
+        include_content: bool | None = None,
+        dashboard_transport: Any = None,
         **kwargs: Any,
     ) -> Platform:
         """Run on the bundle the bastion service publishes for the key's app.
@@ -193,6 +233,11 @@ class Platform:
         seconds (ETag, so unchanged bundles cost a 304); a new revision is
         swapped in without a restart. *service_transport* is an httpx
         transport for reaching the service (tests).
+
+        Traces go to a LocalSink and, unless ``dashboard=False``, a
+        DashboardSink posting to the same service with the same key. Content
+        is sent if the bundle's ``dashboard.include_content`` says so, unless
+        *include_content* is given here. Passing ``sinks=`` replaces both.
         """
         client = BundleClient(url, api_key, cache_dir=cache_dir, transport=service_transport)
         try:
@@ -212,7 +257,13 @@ class Platform:
             compiled = load_config(result.bundle)
         except ConfigError as e:
             raise PlatformError(f"The bundle for {result.app!r} (revision {result.revision}) doesn't compile: {e}") from None
+        if "sinks" not in kwargs and dashboard:
+            d = compiled.platform.dashboard
+            content = include_content if include_content is not None else bool(d and d.include_content)
+            kwargs["sinks"] = [LocalSink(), DashboardSink(url, api_key, include_content=content,
+                                                          transport=dashboard_transport)]
         platform = cls(compiled, result.app, bundle_revision=result.revision, **kwargs)
+        platform._content_override = include_content
         platform._remote = _Remote(client, result.etag, refresh_interval, from_cache=result.from_cache)
         return platform
 
@@ -240,6 +291,7 @@ class Platform:
             if self._started:
                 unregister_tool_source(self._source)
                 self._started = False
+        await self._exporter.close()  # DashboardSink sends what it still holds
 
     # ── remote mode ──────────────────────────────────────────────────────────
 
@@ -288,6 +340,9 @@ class Platform:
                     await register_tool_source(self._source)
                     return False
             self._config_version += 1
+            if self.dashboard is not None and self._content_override is None:
+                d = compiled.platform.dashboard
+                self.dashboard.include_content = bool(d and d.include_content)
             self._remote.etag = result.etag
             self._remote.from_cache = False
         await asyncio.to_thread(self._remote.client.save_cache, result)

@@ -43,12 +43,20 @@ class AuthIn(Strict):
     prefix: str = Field(default="", max_length=50)
 
 
+class DashboardIn(Strict):
+    """What the SDK's DashboardSink takes from the bundle. The URL and key
+    are the app's own (BASTION_URL / BASTION_KEY), never stored here."""
+
+    include_content: bool = False
+
+
 class AppIn(Strict):
     name: str = Field(pattern=_NAME)
     base_url: str | None = Field(default=None, max_length=2048)
     auth: AuthIn | None = None
     settings: dict[str, Any] = Field(default_factory=dict)
     classifier: dict[str, Any] = Field(default_factory=dict)
+    dashboard: DashboardIn | None = None
     _n = field_validator("name")(_no_double_underscore)
 
 
@@ -57,6 +65,7 @@ class AppPatch(Strict):
     auth: AuthIn | None = None
     settings: dict[str, Any] | None = None
     classifier: dict[str, Any] | None = None
+    dashboard: DashboardIn | None = None
 
 
 class ToolSpec(Strict):
@@ -143,7 +152,7 @@ def app_view(db: Session, app: App) -> dict[str, Any]:
     rev = latest_revision(db, app)
     return {
         "name": app.name, "base_url": app.base_url, "auth": app.auth,
-        "settings": app.settings, "classifier": app.classifier,
+        "settings": app.settings, "classifier": app.classifier, "dashboard": app.dashboard or {},
         "revision": rev.revision if rev else 0,
         "created_at": app.created_at, "updated_at": app.updated_at,
     }
@@ -174,7 +183,8 @@ def create_app_(body: AppIn, db: Session = Depends(get_db), user: User = Depends
     if db.scalar(select(App).where(App.owner_id == user.id, App.name == body.name)):
         raise HTTPException(409, f"You already have an app named {body.name!r}.")
     app = App(owner_id=user.id, name=body.name, base_url=body.base_url,
-              auth=_dump(body.auth) if body.auth else None, settings=body.settings, classifier=body.classifier)
+              auth=_dump(body.auth) if body.auth else None, settings=body.settings, classifier=body.classifier,
+              dashboard=_dump(body.dashboard) if body.dashboard else {})
     db.add(app)
     db.flush()
     commit_change(db, user, [app], action="create", entity_type="app", entity_name=app.name,
@@ -200,6 +210,8 @@ def patch_app(app_name: str, body: AppPatch, db: Session = Depends(get_db), user
         app.settings = body.settings or {}
     if "classifier" in fields:
         app.classifier = body.classifier or {}
+    if "dashboard" in fields:
+        app.dashboard = _dump(body.dashboard) if body.dashboard else {}
     commit_change(db, user, [app], action="update", entity_type="app", entity_name=app.name,
                   audit_app=app, before=before, after=app)
     return app_view(db, app)
