@@ -5,8 +5,9 @@ description = "One platform SDK on top of Anvil (governance) and Agent Forge (ag
 requires-python = ">=3.11"
 dependencies = [
   # Pinned to the current main commits (Anvil Phase 2, Agent Forge Phase 3).
-  "anvil-ai @ git+https://github.com/infoshikharpathak/anvil.git@1a7c60a",
-  "agent-forge @ git+https://github.com/infoshikharpathak/Agent-Forge.git@57d62a8",
+  # Full SHAs: pip only caches wheels built from git refs that are immutable commits.
+  "anvil-ai @ git+https://github.com/infoshikharpathak/anvil.git@1a7c60a29dacbdcdd01f84956427aca22d26161e",
+  "agent-forge @ git+https://github.com/infoshikharpathak/Agent-Forge.git@57d62a88136656a6c2a4629ce1bd70f04a6dd0c2",
   "pydantic>=2.0",
   "pyyaml>=6.0",
   "httpx>=0.27",
