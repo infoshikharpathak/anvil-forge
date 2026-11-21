@@ -16,7 +16,9 @@ from types import SimpleNamespace
 from anthropic.types import Message
 from openai.types.chat import ChatCompletion
 
-CLASSIFIER_MARKER = "injection-detection classifier"
+from anvil_forge.classifier import CLASSIFIER_PROMPT
+
+CLASSIFIER_MARKER = CLASSIFIER_PROMPT[:60]  # classifier calls carry the SDK's prompt
 
 
 class _Script:
