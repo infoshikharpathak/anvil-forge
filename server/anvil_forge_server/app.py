@@ -22,12 +22,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from fastapi import Request
     from fastapi.responses import JSONResponse
 
-    from .routes import auth, keys, manage
+    from .routes import auth, keys, manage, sdk
     from .workspace import ChangeRejected, NotFound
 
     app.include_router(auth.router)
     app.include_router(manage.router)
     app.include_router(keys.router)
+    app.include_router(sdk.router)
 
     @app.exception_handler(NotFound)
     def _not_found(_req: Request, exc: NotFound):
