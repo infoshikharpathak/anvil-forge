@@ -18,7 +18,7 @@ import re
 from typing import Any, Callable
 
 from agent_forge.core.context import RunContext, current_run_context
-from anvil.injection_prompts import BASE_PROMPT, classifier_prompt
+from anvil.injection_prompts import BASE_PROMPT, OUTPUT_TEMPERATURE, classifier_prompt
 from anvil.validators import InjectionResult, ScanContext
 
 from .agents import ClientProvider
@@ -69,8 +69,12 @@ class ProviderClassifier:
 
     async def __call__(self, text: str, context: ScanContext | None = None) -> InjectionResult:
         text = text[:_MAX_CHARS]
-        # Base prompt for every direction today; see anvil.injection_prompts.
-        system = classifier_prompt(context.direction if context else None, context.as_dict() if context else None)
+        # Agent replies get the output_context prompt at temperature 0, as the
+        # injection eval measured it; other directions the base prompt and the
+        # API's default temperature. See anvil.injection_prompts.
+        direction = context.direction if context else None
+        system = classifier_prompt(direction, context.as_dict() if context else None)
+        sampling = {"temperature": OUTPUT_TEMPERATURE} if direction == "output" else {}
         client = self._clients.get(self.provider)
         if self.provider == "anthropic":
             resp = await client.messages.create(
@@ -78,6 +82,7 @@ class ProviderClassifier:
                 max_tokens=100,
                 system=system,
                 messages=[{"role": "user", "content": text}],
+                **sampling,
             )
             content = "".join(b.text for b in resp.content if getattr(b, "type", "") == "text")
             usage = (resp.usage.input_tokens, resp.usage.output_tokens)
@@ -88,6 +93,7 @@ class ProviderClassifier:
                     {"role": "system", "content": system},
                     {"role": "user", "content": text},
                 ],
+                **sampling,
             )
             content = resp.choices[0].message.content or ""
             u = resp.usage

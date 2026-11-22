@@ -68,3 +68,26 @@ def test_default_provider():
     assert default_provider(["anthropic", "anthropic", "openai"]) == "anthropic"
     assert default_provider(["anthropic", "openai"]) == "openai"
     assert default_provider([]) == "openai"
+
+
+async def test_output_scans_get_the_reply_prompt_at_temperature_zero():
+    """Agent replies: output_context prompt (with the user's request), temperature 0.
+    Everything else: the base prompt, API-default temperature."""
+    from anvil.injection_prompts import BASE_PROMPT
+
+    calls = []
+
+    async def create(**kwargs):
+        calls.append(kwargs)
+        return ScriptedOpenAI._completion({"role": "assistant", "content": '{"injection": false}'}, "stop")
+
+    from types import SimpleNamespace
+    llm = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    anvil, _ = make("openai", llm)
+    await anvil.check_agent_input("ironclad.triage", "What's my balance?")
+    await anvil.check_agent_output("ironclad.triage", "Your balance is $10.", user_request="What's my balance?")
+    inp, out = calls
+    assert inp["messages"][0]["content"] == BASE_PROMPT and "temperature" not in inp
+    assert out["temperature"] == 0.0
+    system = out["messages"][0]["content"]
+    assert "agent's own reply to its user" in system and "The user's request: \"What's my balance?\"" in system
