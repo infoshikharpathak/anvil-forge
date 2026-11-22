@@ -147,6 +147,7 @@ class Platform:
         sinks: list[TraceSink] | None = None,
         http_transport: Any = None,
         prepare_tool_call: Any = None,
+        on_output_blocked: Any = None,
         bundle_revision: int | None = None,
     ) -> None:
         """*prepare_tool_call* ``(ctx, tool_name, params) -> params`` runs on
@@ -160,6 +161,9 @@ class Platform:
         self._collectors = Collectors()
         self._http_transport = http_transport  # test seam for Anvil's upstream calls
         self._prepare = prepare_tool_call
+        # async (agent, tool_calls) -> [{"tool", "id", "what", "cancelled": bool}]:
+        # undo what a turn created when its reply is blocked (see _run_agent).
+        self._on_output_blocked = on_output_blocked
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
         self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
@@ -550,8 +554,17 @@ class Platform:
             if blocked is not None:
                 # The output scan blocked the agent's reply: show none of the
                 # model's text, but tell the user what this turn's tools did.
-                content, kind = fallback_reply(list(collector.tool_calls))
-                extra_trace = {"output_blocked": {"reason": blocked["message"], "fallback_used": kind}}
+                calls = list(collector.tool_calls)
+                undone = await self._undo_blocked_turn(agent_id, calls)
+                cancelled = [u for u in undone if u.get("cancelled")]
+                not_cancelled = [u for u in undone if not u.get("cancelled")]
+                content, kind = fallback_reply(calls, cancelled, not_cancelled)
+                extra_trace = {
+                    "output_blocked": {"reason": blocked["message"], "fallback_used": kind},
+                    "auto_cancelled": [u["id"] for u in cancelled],
+                }
+                if not_cancelled:
+                    extra_trace["auto_cancel_failed"] = [u["id"] for u in not_cancelled]
             return_value = RunResult(content, status, agent_id, tracer.trace_id, tracer.run_id,
                                      session_id=sess.id if sess else None)
         except Exception as exc:
@@ -657,6 +670,17 @@ class Platform:
         # The config this run started on: a refresh mid-run mustn't change how
         # the run executes, or how its trace describes it.
         return factory, tracer, collector, self.config
+
+    async def _undo_blocked_turn(self, agent_id: str, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Ask the app to cancel what this blocked turn created. Never raises:
+        a failing hook means nothing was cancelled (and the user is told)."""
+        if self._on_output_blocked is None:
+            return []
+        try:
+            return list(await self._on_output_blocked(agent_id, calls) or [])
+        except Exception:
+            log.exception("[platform] on_output_blocked failed")
+            return []
 
     async def _finish(self, run, *, outcome: str, error: str | None, output: str, framework: str,
                       extra: dict[str, Any] | None = None) -> dict:
