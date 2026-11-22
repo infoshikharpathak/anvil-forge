@@ -124,14 +124,15 @@ class AnvilToolSource:
             return None
         started = time.perf_counter()
         try:
-            message = await self._before(ctx, name, dict(args))
+            blocked = await self._before(ctx, name, dict(args))
         except Exception:
             log.exception("[anvil_tool_source] before_call hook failed for %s", tool_id)
             return None
-        if message is None:
+        if blocked is None:
             return None
+        violation, message = blocked if isinstance(blocked, tuple) else ("unrequested_action", blocked)
         payload = {"success": False, "data": None, "tool_executed": False, "correction": {
-            "violation": "unrequested_action", "message": message, "required_actions": [], "call_history": []}}
+            "violation": violation, "message": message, "required_actions": [], "call_history": []}}
         if self._observer is not None:
             try:
                 timing = {"started": started, "duration_ms": round((time.perf_counter() - started) * 1000, 1)}

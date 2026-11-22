@@ -415,3 +415,18 @@ async def test_gate_fails_closed_when_the_hook_raises(monkeypatch):
     reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Couldn't."}], is_requested_action=broken)
     (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
     assert call["violation"] == "unrequested_action"
+
+
+async def test_gate_can_name_its_own_violation_and_sees_the_caller_app(monkeypatch):
+    seen = []
+
+    def hook(history, turn, action):
+        if action.get("phase") == "before" and action["tool"] == "initiate_transfer":
+            seen.append(turn["caller_app"])
+            return NotRequested("Not from outside.", violation="external_caller_payment")
+        return NOT_AN_ACTION
+
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "No."}], is_requested_action=hook)
+    (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
+    assert call["violation"] == "external_caller_payment" and call["correction"] == "Not from outside."
+    assert seen == [None]

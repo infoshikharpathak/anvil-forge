@@ -136,6 +136,7 @@ class NotRequested:
     model gets when a call is blocked before it runs (phase "before")."""
 
     message: str
+    violation: str = "unrequested_action"
 
     def __bool__(self) -> bool:
         return False
@@ -756,15 +757,18 @@ class Platform:
         return ({"session_id": f"{self.app}-{collector.session_id or collector.run_id}"},
                 {CALL_CHAIN_HEADER: ",".join(collector.chain), TRACE_ID_HEADER: collector.trace_id})
 
-    async def _gate_tool_call(self, ctx: RunContext, name: str, params: dict[str, Any]) -> str | None:
+    async def _gate_tool_call(self, ctx: RunContext, name: str, params: dict[str, Any]) -> tuple[str, str] | None:
         """Before a tool runs: ask is_requested_action (phase "before"). For
         actions with no OTP behind them (an address change, a cancellation)
         the app answers here; reads and OTP-protected actions answer
-        NOT_AN_ACTION. Returns the block message, or None to run the call."""
+        NOT_AN_ACTION. Returns (violation, message) to block, or None to run the call."""
         sess = self._run_sessions.get(ctx.run_id)
         collector = self._collectors.for_ctx(ctx)
         turn = {"user": getattr(collector, "message", None), "reply": None,
-                "tool_calls": list(getattr(collector, "tool_calls", []) or [])}
+                "tool_calls": list(getattr(collector, "tool_calls", []) or []),
+                # Who started this run: None for the app's own callers, else the
+                # app authenticated by its A2A key (bastion.a2a).
+                "caller_app": getattr(collector, "caller_app", None)}
         action = {"tool": name, "params": dict(params), "phase": "before"}
         try:
             result = self._is_requested(list(sess.turns) if sess else [], turn, action)
@@ -776,8 +780,8 @@ class Platform:
         if result is NOT_AN_ACTION or result is True:
             return None
         if isinstance(result, NotRequested):
-            return result.message
-        return f"The user hasn't asked for this {name} call. Ask the user to confirm first."
+            return result.violation, result.message
+        return "unrequested_action", f"The user hasn't asked for this {name} call. Ask the user to confirm first."
 
     async def _requested_checks(self, sess: _Session | None, turn: dict, calls: list[dict]) -> list[str | None]:
         """Per tool call: matched / mismatched / unknown (the app's
