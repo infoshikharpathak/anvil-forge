@@ -42,6 +42,7 @@ import httpx
 
 from .agents import ClientProvider, PlatformFactory
 from .classifier import ProviderClassifier, default_provider
+from .fallback import fallback_reply, output_block
 from .config import POLICY_NAME, CompiledConfig, ConfigError, load_config
 from .remote import BundleClient, BundleResult, ServiceError
 from .hooks import AnvilHooks
@@ -480,7 +481,9 @@ class Platform:
             tool = self.config.anvil.tools[tool_id]
             tools.append({
                 "name": relative(tool_id, self.app),
-                "trust": policy.trust_overrides.get(tool_id) or tool.trust,
+                # Anvil's rule: the agent's override, else the tool's own
+                # trust, else the settings default.
+                "trust": policy.trust_overrides.get(tool_id) or tool.trust or self.config.anvil.settings.default_trust,
                 "injection_scanning": tool.injection_scanning,
                 "description": tool.description,
             })
@@ -533,6 +536,7 @@ class Platform:
         run = await self._begin("agent", agent_id, message, trace_id, sess)
         factory, tracer, collector, run_config = run
         content, status, outcome, error = "", "failed", "failed", None
+        extra_trace: dict[str, Any] = {}
         try:
             agent = sess.agents.get(agent_id) if sess else None
             if agent is None:
@@ -542,6 +546,12 @@ class Platform:
             result = await execute_agent(agent, message, agent_id, tracer, self._hooks(tracer.run_id))
             content, status = result.content, result.status
             outcome = "success" if status == "success" else status
+            blocked = output_block(tracer.hook_denials) if status == "withheld" else None
+            if blocked is not None:
+                # The output scan blocked the agent's reply: show none of the
+                # model's text, but tell the user what this turn's tools did.
+                content, kind = fallback_reply(list(collector.tool_calls))
+                extra_trace = {"output_blocked": {"reason": blocked["message"], "fallback_used": kind}}
             return_value = RunResult(content, status, agent_id, tracer.trace_id, tracer.run_id,
                                      session_id=sess.id if sess else None)
         except Exception as exc:
@@ -551,7 +561,7 @@ class Platform:
             if sess is None:
                 await factory.kill_all()
             trace = await self._finish(run, outcome=outcome, error=error, output=content,
-                                       framework=run_config.platform.agents[agent_id].backend)
+                                       framework=run_config.platform.agents[agent_id].backend, extra=extra_trace)
         return_value.trace = trace
         return return_value
 
@@ -648,7 +658,8 @@ class Platform:
         # the run executes, or how its trace describes it.
         return factory, tracer, collector, self.config
 
-    async def _finish(self, run, *, outcome: str, error: str | None, output: str, framework: str) -> dict:
+    async def _finish(self, run, *, outcome: str, error: str | None, output: str, framework: str,
+                      extra: dict[str, Any] | None = None) -> dict:
         """Persist the Agent Forge row, merge the trace and export it. Never raises."""
         _, tracer, collector, config = run
         anvil = self._run_anvils.pop(tracer.run_id, None)
@@ -659,6 +670,7 @@ class Platform:
             row = await asyncio.to_thread(db.get_run, tracer.run_id)
             trace = build_trace(collector, tracer, row, anvil, config,
                                 outcome=outcome, error=error, output=output)
+            trace.update(extra or {})
             await self._exporter.export(trace)
         except Exception:
             log.exception("[platform] tracing failed for trace %s", tracer.trace_id)
