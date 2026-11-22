@@ -62,6 +62,9 @@ class App(Base):
     base_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     # {header, secret_env, prefix}: env var NAMES only, never secret values.
     auth: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    # {granting app: "env:VAR"}: credentials OTHER apps issued to this one, for
+    # the tools they granted it. Env var NAMES only, never secret values.
+    credentials: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, server_default="{}")
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     classifier: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     # SDK dashboard options carried in the bundle ({include_content}). Never a URL or key.

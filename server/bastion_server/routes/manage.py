@@ -43,6 +43,19 @@ class AuthIn(Strict):
     prefix: str = Field(default="", max_length=50)
 
 
+_CREDENTIAL = r"^env:[A-Z_][A-Z0-9_]{0,127}$"
+
+
+def _credentials(value: dict[str, str] | None) -> dict[str, str] | None:
+    """{granting app: "env:VAR"}: a name pattern on both sides, never a secret."""
+    import re
+
+    for app, ref in (value or {}).items():
+        if not re.match(_NAME, app) or not isinstance(ref, str) or not re.match(_CREDENTIAL, ref):
+            raise ValueError(f"credentials must map app names to 'env:VAR' (got {app!r}: {ref!r})")
+    return value
+
+
 class DashboardIn(Strict):
     """What the SDK's DashboardSink takes from the bundle. The URL and key
     are the app's own (BASTION_URL / BASTION_KEY), never stored here."""
@@ -54,15 +67,19 @@ class AppIn(Strict):
     name: str = Field(pattern=_NAME)
     base_url: str | None = Field(default=None, max_length=2048)
     auth: AuthIn | None = None
+    credentials: dict[str, str] = Field(default_factory=dict)
     settings: dict[str, Any] = Field(default_factory=dict)
     classifier: dict[str, Any] = Field(default_factory=dict)
     dashboard: DashboardIn | None = None
     _n = field_validator("name")(_no_double_underscore)
+    _c = field_validator("credentials")(_credentials)
 
 
 class AppPatch(Strict):
     base_url: str | None = None
     auth: AuthIn | None = None
+    credentials: dict[str, str] | None = None
+    _c = field_validator("credentials")(_credentials)
     settings: dict[str, Any] | None = None
     classifier: dict[str, Any] | None = None
     dashboard: DashboardIn | None = None
@@ -151,7 +168,7 @@ def _authored(model: BaseModel, exclude: set[str] | None = None) -> dict[str, An
 def app_view(db: Session, app: App) -> dict[str, Any]:
     rev = latest_revision(db, app)
     return {
-        "name": app.name, "base_url": app.base_url, "auth": app.auth,
+        "name": app.name, "base_url": app.base_url, "auth": app.auth, "credentials": app.credentials or {},
         "settings": app.settings, "classifier": app.classifier, "dashboard": app.dashboard or {},
         "revision": rev.revision if rev else 0,
         "created_at": app.created_at, "updated_at": app.updated_at,
@@ -183,7 +200,8 @@ def create_app_(body: AppIn, db: Session = Depends(get_db), user: User = Depends
     if db.scalar(select(App).where(App.owner_id == user.id, App.name == body.name)):
         raise HTTPException(409, f"You already have an app named {body.name!r}.")
     app = App(owner_id=user.id, name=body.name, base_url=body.base_url,
-              auth=_dump(body.auth) if body.auth else None, settings=body.settings, classifier=body.classifier,
+              auth=_dump(body.auth) if body.auth else None, credentials=dict(body.credentials),
+              settings=body.settings, classifier=body.classifier,
               dashboard=_dump(body.dashboard) if body.dashboard else {})
     db.add(app)
     db.flush()
@@ -206,6 +224,8 @@ def patch_app(app_name: str, body: AppPatch, db: Session = Depends(get_db), user
         app.base_url = body.base_url
     if "auth" in fields:
         app.auth = _dump(body.auth) if body.auth else None
+    if "credentials" in fields:
+        app.credentials = dict(body.credentials or {})
     if "settings" in fields:
         app.settings = body.settings or {}
     if "classifier" in fields:

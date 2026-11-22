@@ -56,12 +56,18 @@ def active_version(db: Session, agent: Agent) -> PromptVersion | None:
 
 # ── bundles ───────────────────────────────────────────────────────────────────
 
-def _app_section(app: App, tools: Iterable[Tool]) -> dict[str, Any]:
+def _app_section(app: App, tools: Iterable[Tool], *, granted: bool = False) -> dict[str, Any]:
+    """An app's section. For a granting app (*granted*) only the header
+    scheme of its auth goes in, never its secret_env: the consumer calls
+    with its own credential (its ``credentials`` section)."""
     section: dict[str, Any] = {}
     if app.base_url:
         section["base_url"] = app.base_url
     if app.auth:
-        section["auth"] = dict(app.auth)
+        auth = dict(app.auth)
+        section["auth"] = {k: auth[k] for k in ("header", "prefix") if k in auth} if granted else auth
+    if not granted and app.credentials:
+        section["credentials"] = dict(app.credentials)
     section["tools"] = {t.name: dict(t.spec) for t in sorted(tools, key=lambda t: t.name)}
     return section
 
@@ -82,7 +88,7 @@ def build_bundle(db: Session, app: App) -> dict[str, Any]:
         by_source.setdefault(source.name, (source, []))[1].append(tool)
     for name in sorted(by_source):
         source, tools = by_source[name]
-        apps[name] = _app_section(source, tools)
+        apps[name] = _app_section(source, tools, granted=True)
 
     agents = {}
     for agent in sorted(db.scalars(select(Agent).where(Agent.app_id == app.id)).all(), key=lambda a: a.name):

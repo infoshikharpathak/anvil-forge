@@ -17,7 +17,7 @@ from ..workspace import (
     NotFound, active_version, add_prompt_version, build_bundle, child, commit_change, latest_revision,
     summary, user_app,
 )
-from .manage import DashboardIn, AgentSpec, AppIn, AuthIn, FlowSpec, ToolSpec, _dump
+from .manage import _credentials, DashboardIn, AgentSpec, AppIn, AuthIn, FlowSpec, ToolSpec, _dump
 
 router = APIRouter(prefix="/v1/apps/{app_name}", tags=["import-export"], dependencies=[Depends(csrf)])
 
@@ -70,6 +70,10 @@ async def import_config(app_name: str, request: Request, db: Session = Depends(g
     section = apps[app_name] or {}
     app.base_url = section.get("base_url")
     app.auth = _strict(AuthIn, section["auth"], "auth") if section.get("auth") else None
+    try:
+        app.credentials = dict(_credentials(section.get("credentials")) or {})
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
     app.settings = dict(doc.get("settings") or {})
     app.classifier = dict(doc.get("classifier") or {})
     dash = dict(doc.get("dashboard") or {})
