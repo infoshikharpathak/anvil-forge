@@ -45,7 +45,12 @@ def _short(value, n: int = 12) -> str:
     return value if len(value) <= n else value[: n - 1] + "…"
 
 
-templates.env.filters.update(ms=_ms, dt=_dt, num=_num, short=_short)
+def _usd(value, places: int = 4) -> str:
+    """A cost, or "unknown" when there's no price for the model(s): never $0."""
+    return "unknown" if value is None else f"${float(value):.{places}f}"
+
+
+templates.env.filters.update(ms=_ms, dt=_dt, num=_num, short=_short, usd=_usd)
 
 
 def _page(request: Request, name: str, **ctx) -> HTMLResponse:

@@ -202,7 +202,10 @@ class Trace(Base):
     model: Mapped[str | None] = mapped_column(String(100), nullable=True)
     token_input: Mapped[int] = mapped_column(Integer, default=0)
     token_output: Mapped[int] = mapped_column(Integer, default=0)
-    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    # None: no model in the trace had a price. unpriced: some part had none
+    # (it's left out of cost_usd), so the cost shown is partial or unknown.
+    cost_usd: Mapped[float | None] = mapped_column(Float, nullable=True, default=None)
+    unpriced: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
     tool_calls: Mapped[list[Any]] = mapped_column(JSON, default=list)
     steps: Mapped[list[Any]] = mapped_column(JSON, default=list)
     # Per-agent rows, violations, scans and hook denial count (metadata only).

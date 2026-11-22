@@ -42,11 +42,24 @@ def _counts(db: Session, where: list) -> dict[str, Any]:
         func.count(Trace.id),
         *[func.coalesce(func.sum(case((Trace.status == s, 1), else_=0)), 0) for s in STATUSES],
         func.coalesce(func.sum(Trace.token_input), 0), func.coalesce(func.sum(Trace.token_output), 0),
-        func.coalesce(func.sum(Trace.cost_usd), 0.0),
+        func.sum(Trace.cost_usd), _UNPRICED,
     ).where(*where)).one()
-    total, ok, blocked, error, tin, tout, cost = row
+    total, ok, blocked, error, tin, tout, cost, unpriced = row
     return {"total": total, "success": ok, "blocked": blocked, "error": error,
-            "token_input": tin, "token_output": tout, "tokens": tin + tout, "cost_usd": cost}
+            "token_input": tin, "token_output": tout, "tokens": tin + tout,
+            **_cost(cost, unpriced)}
+
+
+# Traces with some (or all) of their cost unknown: no price for the model.
+_UNPRICED = func.coalesce(func.sum(case((Trace.unpriced, 1), else_=0)), 0)
+
+
+def _cost(total: float | None, unpriced: int) -> dict[str, Any]:
+    """A cost total that leaves unpriced traces out and says how many there were.
+    cost_usd is None (shown as "unknown") when nothing in it had a price."""
+    if total is None and not unpriced:
+        total = 0.0
+    return {"cost_usd": total, "unpriced": int(unpriced or 0)}
 
 
 def _hourly(db: Session, where: list, now: datetime) -> dict[str, Any]:
@@ -111,7 +124,8 @@ def _row(t: Trace, app_name: str | None = None) -> dict[str, Any]:
             "flow": t.flow_name, "session_id": t.session_id, "status": t.status, "model": t.model,
             "tokens": t.token_input + t.token_output, "token_input": t.token_input,
             "token_output": t.token_output, "duration_ms": t.duration_ms,
-            "started_at": aware(t.started_at), "cost_usd": t.cost_usd,
+            "started_at": aware(t.started_at), "cost_usd": t.cost_usd, "unpriced": t.unpriced,
+            "unpriced_models": (t.summary or {}).get("unpriced_models") or [],
             "violations": len((t.summary or {}).get("violations") or [])}
 
 
@@ -308,22 +322,22 @@ def all_apps_dashboard(request: Request, db: Session = Depends(get_db)):
     window = [*mine, Trace.started_at >= since]
 
     tokens = Trace.token_input + Trace.token_output
-    per_app = {app_id: {"traces": n, "blocked": b, "errors": e, "tokens": tok or 0, "cost_usd": cost or 0.0,
+    per_app = {app_id: {"traces": n, "blocked": b, "errors": e, "tokens": tok or 0, **_cost(cost, unpriced),
                         "last": aware(last)}
-               for app_id, n, b, e, tok, cost, last in db.execute(
+               for app_id, n, b, e, tok, cost, unpriced, last in db.execute(
                    select(Trace.app_id, func.count(Trace.id),
                           func.coalesce(func.sum(case((Trace.status == "blocked", 1), else_=0)), 0),
                           func.coalesce(func.sum(case((Trace.status == "error", 1), else_=0)), 0),
-                          func.sum(tokens), func.sum(Trace.cost_usd), func.max(Trace.started_at))
+                          func.sum(tokens), func.sum(Trace.cost_usd), _UNPRICED, func.max(Trace.started_at))
                    .where(*window).group_by(Trace.app_id))}
     app_rows = [{"name": a.name, **per_app.get(a.id, {"traces": 0, "blocked": 0, "errors": 0, "tokens": 0,
-                                                       "cost_usd": 0.0, "last": None})} for a in apps]
+                                                       **_cost(None, 0), "last": None})} for a in apps]
 
     by_model = [{"model": m or "unknown", "traces": n, "token_input": i or 0, "token_output": o or 0,
-                 "tokens": (i or 0) + (o or 0), "cost_usd": c or 0.0}
-                for m, n, i, o, c in db.execute(
+                 "tokens": (i or 0) + (o or 0), **_cost(c, unpriced)}
+                for m, n, i, o, c, unpriced in db.execute(
                     select(Trace.model, func.count(Trace.id), func.sum(Trace.token_input),
-                           func.sum(Trace.token_output), func.sum(Trace.cost_usd))
+                           func.sum(Trace.token_output), func.sum(Trace.cost_usd), _UNPRICED)
                     .where(*window).group_by(Trace.model).order_by(func.sum(tokens).desc()))]
 
     by_day: dict[date, dict[str, Any]] = {}

@@ -18,7 +18,7 @@
     <dt>Started</dt><dd class="mono">{{ t.started_at|dt }} UTC</dd>
     <dt>Ended</dt><dd class="mono">{{ t.ended_at|dt }} UTC</dd>
     <dt>Duration</dt><dd>{{ t.duration_ms|ms }}</dd>
-    <dt>Tokens</dt><dd>{{ t.token_input|num }} in · {{ t.token_output|num }} out · est. ${{ '%.5f'|format(t.cost_usd) }}</dd>
+    <dt>Tokens</dt><dd>{{ t.token_input|num }} in · {{ t.token_output|num }} out · est. {{ t.cost_usd|usd(5) }}{% if t.unpriced %} <span class="sub-inline">({{ 'partial: ' if t.cost_usd is not none }}no price for {{ t.unpriced_models|join(', ') if t.unpriced_models else 'the model' }})</span>{% endif %}</dd>
   </dl>
   {% if runs|length > 1 %}
   <p class="sub" style="margin:8px 0 0">This trace_id has {{ runs|length }} runs:

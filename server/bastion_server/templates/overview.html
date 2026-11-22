@@ -13,7 +13,8 @@
     <span class="label">{{ totals.blocked|num }} blocked · {{ totals.error|num }} error</span></div>
   <div class="tile"><span class="label">Tokens, last {{ days }} days</span><span class="value">{{ totals.tokens|num }}</span>
     <span class="label">{{ totals.token_input|num }} in · {{ totals.token_output|num }} out</span></div>
-  <div class="tile"><span class="label">Est. cost, last {{ days }} days</span><span class="value">${{ '%.2f'|format(totals.cost_usd) }}</span></div>
+  <div class="tile"><span class="label">Est. cost, last {{ days }} days</span><span class="value">{{ totals.cost_usd|usd(2) }}</span>
+    {% if totals.unpriced %}<span class="label">excludes {{ totals.unpriced|num }} trace{{ '' if totals.unpriced == 1 else 's' }} with no price</span>{% endif %}</div>
   <div class="tile"><span class="label">Tokens today</span><span class="value">{{ today.tokens|num }}</span>
     <span class="label">{{ today.total|num }} traces</span></div>
 </div>
@@ -36,7 +37,7 @@
   {% for a in apps %}
     <tr><td><a href="/ui/apps/{{ a.name }}/dashboard"><strong>{{ a.name }}</strong></a></td>
       <td class="num">{{ a.traces|num }}</td><td class="num">{{ a.blocked|num }}</td><td class="num">{{ a.errors|num }}</td>
-      <td class="num">{{ a.tokens|num }}</td><td class="num">${{ '%.4f'|format(a.cost_usd) }}</td>
+      <td class="num">{{ a.tokens|num }}</td><td class="num">{{ a.cost_usd|usd(4) }}{% if a.unpriced %}<span class="sub-inline" title="Left out of the total: no price for the model">(excl. {{ a.unpriced|num }} unpriced)</span>{% endif %}</td>
       <td class="mono">{{ a.last|dt if a.last else '—' }}</td></tr>
   {% else %}<tr><td colspan="7" class="sub">No apps yet. <a href="/ui">Create one</a>.</td></tr>{% endfor %}
   </tbody></table>
@@ -50,7 +51,7 @@
       {% for m in by_model %}
         <tr><td class="mono">{{ m.model }}</td><td class="num">{{ m.traces|num }}</td>
           <td class="num">{{ m.token_input|num }}</td><td class="num">{{ m.token_output|num }}</td>
-          <td class="num">${{ '%.4f'|format(m.cost_usd) }}</td></tr>
+          <td class="num">{{ m.cost_usd|usd(4) }}{% if m.unpriced %}<span class="sub-inline" title="Left out of the total: no price for the model">(excl. {{ m.unpriced|num }} unpriced)</span>{% endif %}</td></tr>
       {% else %}<tr><td colspan="5" class="sub">No traces.</td></tr>{% endfor %}
       </tbody></table>
     </div>

@@ -303,8 +303,14 @@ Decisions (4c as built):
   it fits. Rejected and duplicate records don't count. Two concurrent
   requests can overshoot slightly; acceptable for a soft limit.
 - Extra columns beyond the list: flow_name, app_key_id, run_id,
-  prompt_version, duration_ms, cost_usd, received_at, and summary (JSON:
-  per-agent rows, violations, scans, hook denial count).
+  prompt_version, duration_ms, cost_usd, unpriced, received_at, and
+  summary (JSON: per-agent rows, violations, scans, hook denial count,
+  unpriced_models).
+- Cost: prices come from Agent Forge's one table (agent_forge.pricing).
+  cost_usd is null when no model in the trace has a price, never 0.0, and
+  unpriced is true when any part of the trace had none. Dashboard totals
+  add up only priced costs, show "unknown" when nothing was priced, and say
+  how many traces were left out.
 - Status: success; blocked if the run's outcome was blocked or withheld,
   or any hook denied; error if it failed. A run whose tool calls were
   blocked but which answered anyway is success (with violations shown).

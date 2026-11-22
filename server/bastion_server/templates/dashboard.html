@@ -51,7 +51,8 @@ BASTION_KEY=bk_...</pre>
       <p class="kv"><span>Blocked</span><strong>{{ week.blocked|num }}</strong></p>
       <p class="kv"><span>Errors</span><strong>{{ week.error|num }}</strong></p>
       <p class="kv"><span>Tokens</span><strong>{{ week.tokens|num }}</strong></p>
-      <p class="kv"><span>Est. cost</span><strong>${{ '%.4f'|format(week.cost_usd) }}</strong></p>
+      <p class="kv"><span>Est. cost</span><strong>{{ week.cost_usd|usd(4) }}</strong></p>
+      {% if week.unpriced %}<p class="sub">{{ week.unpriced|num }} trace{{ '' if week.unpriced == 1 else 's' }} had no price for the model and {{ 'is' if week.unpriced == 1 else 'are' }} left out of the cost.</p>{% endif %}
     </div>
   </div>
 </div>

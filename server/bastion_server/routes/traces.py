@@ -66,7 +66,8 @@ class TraceIn(BaseModel):
     model: str | None = Field(default=None, max_length=100)
     token_input: int = Field(default=0, ge=0)
     token_output: int = Field(default=0, ge=0)
-    cost_usd: float = Field(default=0.0, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0)  # None: no price for the model(s)
+    unpriced_models: list[str] = Field(default_factory=list, max_length=200)
     tool_calls: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_LIST)
     steps: list[dict[str, Any]] = Field(default_factory=list, max_length=MAX_LIST)
     agents: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
@@ -202,9 +203,11 @@ def ingest(
             bundle_revision=rec.bundle_revision, prompt_version=rec.prompt_version,
             started_at=rec.started_at, ended_at=rec.ended_at, duration_ms=round(duration, 1),
             status=rec.status, model=rec.model, token_input=rec.token_input, token_output=rec.token_output,
-            cost_usd=rec.cost_usd, tool_calls=rec.tool_calls, steps=rec.steps,
+            cost_usd=rec.cost_usd, unpriced=rec.cost_usd is None or bool(rec.unpriced_models),
+            tool_calls=rec.tool_calls, steps=rec.steps,
             summary={"kind": rec.kind, "agents": rec.agents, "violations": rec.violations,
-                     "scans": rec.scans, "hook_denials": rec.hook_denials},
+                     "scans": rec.scans, "hook_denials": rec.hook_denials,
+                     "unpriced_models": rec.unpriced_models},
             content=rec.content, received_at=now,
         ))
     db.flush()
