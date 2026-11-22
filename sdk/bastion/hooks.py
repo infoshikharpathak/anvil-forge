@@ -12,7 +12,7 @@ this fails closed even if Anvil itself errors.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agent_forge.core.context import use_run_context
 from agent_forge.core.hooks import AgentHooks, HookDecision
@@ -36,8 +36,11 @@ def _decision(result: AgentCheckResult) -> HookDecision:
 
 
 class AnvilHooks(AgentHooks):
-    def __init__(self, anvil: Anvil, app: str) -> None:
+    def __init__(self, anvil: Anvil, app: str, on_output_check: Any = None) -> None:
         self._anvil = anvil
+        # (run_id, info) -> None: what the output check decided, for the
+        # platform (block or flag, which check, label, reason).
+        self._on_output_check = on_output_check
         self._app = app
         # The task each agent run started with, so the output check can tell
         # the classifier what the user asked (keyed by run and agent).
@@ -62,11 +65,16 @@ class AnvilHooks(AgentHooks):
     async def after_agent_run(self, ctx: RunContext, output: str) -> HookDecision:
         task = self._tasks.pop((ctx.run_id, ctx.agent_name), None)
         with use_run_context(ctx):
-            return _decision(
-                await self._anvil.check_agent_output(
-                    self._id(ctx.agent_name), output, trace_id=ctx.trace_id, user_request=task
-                )
+            result = await self._anvil.check_agent_output(
+                self._id(ctx.agent_name), output, trace_id=ctx.trace_id, user_request=task
             )
+        if self._on_output_check is not None and (result.flagged or not result.allowed):
+            self._on_output_check(ctx.run_id, {
+                "check": result.check, "label": result.label,
+                "result": "flag" if result.allowed else "block",
+                "reason": result.reason or (result.correction.message if result.correction else None),
+            })
+        return _decision(result)
 
     async def on_handoff(
         self, ctx: RunContext, from_agent: str, to_agent: str, payload: str

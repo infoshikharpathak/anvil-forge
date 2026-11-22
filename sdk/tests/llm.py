@@ -22,14 +22,18 @@ CLASSIFIER_MARKER = CLASSIFIER_PROMPT[:60]  # classifier calls carry the SDK's p
 
 
 class _Script:
-    def __init__(self, scripts: dict[str, list[dict]], injection_words=()):
+    def __init__(self, scripts: dict[str, list[dict]], injection_words=(), label_words=None):
         self.scripts = {k: v if callable(v) else list(v) for k, v in scripts.items()}
         self.requests: dict[str, list[dict]] = {}
         self.classifier_requests: list[str] = []
         self.injection_words = tuple(injection_words)
+        self.label_words = dict(label_words or {})  # word -> output label, e.g. "unrequested_action"
 
     def _classify(self, text: str) -> str:
         self.classifier_requests.append(text)
+        label = next((lbl for w, lbl in self.label_words.items() if w in text.lower()), None)
+        if label:
+            return json.dumps({"label": label, "reason": f"stub: {label}"})
         hit = next((w for w in self.injection_words if w in text.lower()), None)
         return json.dumps({"injection": True, "pattern": f"says {hit}"} if hit else {"injection": False})
 
@@ -44,8 +48,8 @@ class _Script:
 
 
 class ScriptedOpenAI(_Script):
-    def __init__(self, scripts, injection_words=()):
-        super().__init__(scripts, injection_words)
+    def __init__(self, scripts, injection_words=(), label_words=None):
+        super().__init__(scripts, injection_words, label_words)
         self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
 
     @staticmethod
@@ -85,8 +89,8 @@ class ScriptedOpenAI(_Script):
 
 
 class ScriptedAnthropic(_Script):
-    def __init__(self, scripts, injection_words=()):
-        super().__init__(scripts, injection_words)
+    def __init__(self, scripts, injection_words=(), label_words=None):
+        super().__init__(scripts, injection_words, label_words)
         self.messages = SimpleNamespace(create=self._create)
 
     @staticmethod

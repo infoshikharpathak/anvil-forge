@@ -123,6 +123,9 @@ class Collectors:
             "correction": correction.get("message"),
             "required_actions": correction.get("required_actions") or [],
             "response": response.get("data"),
+            # A withheld response's raw data, for the host only (never sent
+            # to the model, nor to the dashboard).
+            "withheld_response": response.get("withheld_data"),
             "started_ms": c.offset_ms(started) if started is not None else None,
             "duration_ms": duration,
         })

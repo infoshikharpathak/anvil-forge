@@ -82,6 +82,7 @@ class AnvilToolSource:
         tool_id = resolve(name, self._app)
         anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
         started = time.perf_counter()
+        withheld = None
         try:
             model_params, host_params = dict(args), {}
             if self._prepare is not None:
@@ -100,7 +101,8 @@ class AnvilToolSource:
                 host_params=host_params,
                 trace_id=ctx.trace_id,
             )
-            payload = response.model_dump(mode="json")
+            payload = response.model_dump(mode="json")  # excludes withheld_data
+            withheld = response.withheld_data
         except Exception as exc:  # never raise into the agent loop
             log.exception("[anvil_tool_source] %s failed", tool_id)
             payload = {
@@ -117,7 +119,10 @@ class AnvilToolSource:
         timing = {"started": started, "duration_ms": round((time.perf_counter() - started) * 1000, 1)}
         if self._observer is not None:
             try:
-                self._observer(ctx, name, tool_id, args, payload, timing)
+                # The host (trace, app hooks) also gets a withheld result; the
+                # model only ever gets *payload*.
+                observed = payload if withheld is None else {**payload, "withheld_data": withheld}
+                self._observer(ctx, name, tool_id, args, observed, timing)
             except Exception:
                 log.exception("[anvil_tool_source] observer failed")
         # A JSON string reads the same on every backend (some str() dicts).

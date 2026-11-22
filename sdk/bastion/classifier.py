@@ -13,12 +13,10 @@ regex scanner. A scan never breaks a run.
 
 from __future__ import annotations
 
-import json
-import re
 from typing import Any, Callable
 
 from agent_forge.core.context import RunContext, current_run_context
-from anvil.injection_prompts import BASE_PROMPT, OUTPUT_TEMPERATURE, classifier_prompt
+from anvil.injection_prompts import BASE_PROMPT, OUTPUT_TEMPERATURE, classifier_prompt, parse_verdict
 from anvil.validators import InjectionResult, ScanContext
 
 from .agents import ClientProvider
@@ -39,7 +37,6 @@ def is_classifier_request(messages: list) -> bool:
 
 
 _MAX_CHARS = 4000
-_JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 
 # (ctx or None, usage dict) -> None
 UsageObserver = Callable[[RunContext | None, dict[str, Any]], None]
@@ -100,19 +97,16 @@ class ProviderClassifier:
             usage = (u.prompt_tokens, u.completion_tokens) if u else (0, 0)
 
         try:
-            match = _JSON_OBJECT.search(content)
-            verdict = json.loads(match.group(0) if match else content)
+            # {"injection": ...}, or for output scans {"label": ..., "reason": ...}
+            result = parse_verdict(content)
         except ValueError:
             self._report(usage, detected=None, pattern=None)  # unreadable: Anvil falls back to regex
             raise
-        if verdict.get("injection"):
-            pattern = f"llm:{verdict.get('pattern', 'detected')}"
-            self._report(usage, detected=True, pattern=pattern)
-            return InjectionResult(detected=True, matched_pattern=pattern)
-        self._report(usage, detected=False, pattern=None)
-        return InjectionResult(detected=False)
+        self._report(usage, detected=result.detected, pattern=result.matched_pattern, label=result.label)
+        return result
 
-    def _report(self, usage: tuple[int, int], *, detected: bool | None, pattern: str | None) -> None:
+    def _report(self, usage: tuple[int, int], *, detected: bool | None, pattern: str | None,
+                label: str | None = None) -> None:
         if self._on_usage is None:
             return
         self._on_usage(current_run_context(), {
@@ -123,6 +117,7 @@ class ProviderClassifier:
             "cost_usd": _estimate_cost(self.model, *usage),  # None: unpriced model
             "detected": detected,  # None: the reply wasn't a verdict, so Anvil used its regex scan
             "pattern": pattern,
+            "label": label,  # output scans: ok, ai_instruction, data_leak, unrequested_action
         })
 
 

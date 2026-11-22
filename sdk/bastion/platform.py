@@ -162,8 +162,10 @@ class Platform:
         self._http_transport = http_transport  # test seam for Anvil's upstream calls
         self._prepare = prepare_tool_call
         # async (agent, tool_calls, reason) -> [{"tool", "id", "what", "where", "flagged": bool}]:
-        # flag what a turn created when its reply is blocked (see _run_agent).
+        # flag what a turn created when its reply is blocked, or delivered but
+        # labeled unrequested_action (see _run_agent).
         self._on_output_blocked = on_output_blocked
+        self._output_checks: dict[str, dict[str, Any]] = {}  # run_id -> what the output check decided
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
         self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
@@ -551,6 +553,16 @@ class Platform:
             content, status = result.content, result.status
             outcome = "success" if status == "success" else status
             blocked = output_block(tracer.hook_denials) if status == "withheld" else None
+            check = self._output_checks.pop(tracer.run_id, None)
+            if blocked is None and check is not None and check["result"] == "flag":
+                # Delivered, but the reply pushes an action the user didn't ask
+                # for (unrequested_action): flag what the turn created, so the
+                # user is warned before approving it. Nothing is cancelled.
+                calls = list(collector.tool_calls)
+                created = await self._flag_blocked_turn(agent_id, calls, check["reason"] or check["label"])
+                extra_trace = {"output_check": check, "flagged": [c["id"] for c in created if c.get("flagged")]}
+                if any(not c.get("flagged") for c in created):
+                    extra_trace["flag_failed"] = [c["id"] for c in created if not c.get("flagged")]
             if blocked is not None:
                 # The output scan blocked the agent's reply: show none of the
                 # model's text, but tell the user what this turn's tools did.
@@ -561,6 +573,8 @@ class Platform:
                 content, kind = fallback_reply(calls, created)
                 extra_trace = {
                     "output_blocked": {"reason": blocked["message"], "fallback_used": kind},
+                    "output_check": check or {"check": None, "label": None, "result": "block",
+                                              "reason": blocked["message"]},
                     "flagged": [c["id"] for c in created if c.get("flagged")],
                 }
                 if any(not c.get("flagged") for c in created):
@@ -653,7 +667,8 @@ class Platform:
         return anvil
 
     def _hooks(self, run_id: str) -> list:
-        return [TraceRecorderHooks(self._collectors), AnvilHooks(self._run_anvils[run_id], self.app)]
+        return [TraceRecorderHooks(self._collectors),
+                AnvilHooks(self._run_anvils[run_id], self.app, on_output_check=self._output_checks.__setitem__)]
 
     async def _begin(self, kind: str, target: str, message: str, trace_id: str | None, sess: _Session | None):
         await self.start()
@@ -688,6 +703,7 @@ class Platform:
         """Persist the Agent Forge row, merge the trace and export it. Never raises."""
         _, tracer, collector, config = run
         anvil = self._run_anvils.pop(tracer.run_id, None)
+        self._output_checks.pop(tracer.run_id, None)  # e.g. a flow agent's, or a failed run's
         self._collectors.end(tracer.run_id)
         trace: dict[str, Any] = {}
         try:
