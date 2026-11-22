@@ -345,3 +345,21 @@ async def test_session_turns_reach_the_hook(monkeypatch):
     assert hook.seen[-1] == (1, "yes", "initiate_transfer")
     assert reply.trace["requested_check"][0]["result"] == "matched"
 
+
+# ── after_tool_call: the host may replace a result before the model sees it ─
+
+async def test_after_tool_call_can_retry_and_replace_the_result(monkeypatch):
+    calls = []
+
+    async def after(ctx, name, params, payload, *, user_message, call_again):
+        calls.append((name, user_message))
+        if name == "get_accounts" and not params.get("retried"):
+            again = await call_again({**params}, {"retried_with_user_text": True})
+            return {**again, "data": {"replaced": True}}
+        return None
+
+    reply = await run(monkeypatch, [ACCOUNTS, {"text": "ok"}], after_tool_call=after)
+    assert calls == [("get_accounts", "send $5 to Alice")]
+    recorded = [c for c in reply.trace["tool_calls"] if c["tool"] == "get_accounts"]
+    assert len(recorded) == 2 and recorded[1].get("retried_with_user_text") is True
+    assert "retried_with_user_text" not in recorded[0]

@@ -126,6 +126,7 @@ class Collectors:
             # A withheld response's raw data, for the host only (never sent
             # to the model, nor to the dashboard).
             "withheld_response": response.get("withheld_data"),
+            **(response.get("extra") or {}),  # host notes, e.g. retried_with_user_text
             "started_ms": c.offset_ms(started) if started is not None else None,
             "duration_ms": duration,
         })

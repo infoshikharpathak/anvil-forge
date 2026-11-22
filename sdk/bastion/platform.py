@@ -158,6 +158,7 @@ class Platform:
         prepare_tool_call: Any = None,
         on_output_blocked: Any = None,
         is_requested_action: Any = None,
+        after_tool_call: Any = None,
         bundle_revision: int | None = None,
     ) -> None:
         """*prepare_tool_call* ``(ctx, tool_name, params) -> params`` runs on
@@ -179,6 +180,7 @@ class Platform:
         # sync or async: did the user ask for this action? Asked only when the
         # classifier labels a reply unrequested_action; True = don't flag it.
         self._is_requested = is_requested_action
+        self._after_tool_call = after_tool_call  # see AnvilToolSource(after_call=...)
         self._output_checks: dict[str, dict[str, Any]] = {}  # run_id -> what the output check decided
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
@@ -214,6 +216,8 @@ class Platform:
             observer=self._collectors.on_tool_call,
             anvil_for=lambda ctx: self._run_anvils.get(ctx.run_id),
             prepare=self._prepare,
+            after_call=self._after_tool_call,
+            message_for=lambda ctx: getattr(self._collectors.for_ctx(ctx), "message", None),
         )
 
     @classmethod

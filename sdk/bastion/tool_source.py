@@ -51,7 +51,15 @@ class AnvilToolSource:
         observer: ToolCallObserver | None = None,
         anvil_for: Callable[[RunContext], Anvil | None] | None = None,
         prepare: ToolCallPreparer | None = None,
+        after_call: Any = None,
+        message_for: Callable[[RunContext], str | None] | None = None,
     ) -> None:
+        """*after_call* ``async (ctx, name, params, payload, *, user_message,
+        call_again) -> payload | None`` may replace a tool's result before the
+        model sees it; ``call_again(params, note)`` runs the same tool again
+        through Anvil (recorded as its own call, with *note* in the trace)."""
+        self._after = after_call
+        self._message_for = message_for
         self._anvil = anvil
         self._app = app
         self._observer = observer
@@ -81,6 +89,28 @@ class AnvilToolSource:
     async def call(self, name: str, args: dict[str, Any], ctx: RunContext) -> str:
         tool_id = resolve(name, self._app)
         anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
+        payload = await self._execute(anvil, ctx, name, tool_id, args)
+        if self._after is not None:
+            # The host may replace the result before the model sees it (e.g.
+            # retry an empty search). Its extra calls go through Anvil the
+            # same way and are recorded as their own tool calls.
+            async def call_again(new_args: dict[str, Any], note: dict[str, Any] | None = None) -> dict:
+                return await self._execute(anvil, ctx, name, tool_id, dict(new_args), extra=note)
+
+            try:
+                user_message = self._message_for(ctx) if self._message_for else None
+                replaced = await self._after(ctx, name, dict(args), payload, user_message=user_message,
+                                             call_again=call_again)
+                if replaced is not None:
+                    payload = replaced
+            except Exception:
+                log.exception("[anvil_tool_source] after_tool_call hook failed for %s", tool_id)
+        # A JSON string reads the same on every backend (some str() dicts).
+        return json.dumps(payload)
+
+    async def _execute(self, anvil: Anvil, ctx: RunContext, name: str, tool_id: str, args: dict[str, Any],
+                       extra: dict[str, Any] | None = None) -> dict:
+        """One governed call through Anvil, observed; returns the model-facing payload."""
         started = time.perf_counter()
         withheld = None
         try:
@@ -122,8 +152,9 @@ class AnvilToolSource:
                 # The host (trace, app hooks) also gets a withheld result; the
                 # model only ever gets *payload*.
                 observed = payload if withheld is None else {**payload, "withheld_data": withheld}
+                if extra:
+                    observed = {**observed, "extra": extra}
                 self._observer(ctx, name, tool_id, args, observed, timing)
             except Exception:
                 log.exception("[anvil_tool_source] observer failed")
-        # A JSON string reads the same on every backend (some str() dicts).
-        return json.dumps(payload)
+        return payload
