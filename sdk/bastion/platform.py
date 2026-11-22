@@ -703,7 +703,7 @@ class Platform:
     # ── internals ────────────────────────────────────────────────────────────
 
     def _new_anvil(self, session_id: str) -> Anvil:
-        anvil = Anvil(self.config.anvil, POLICY_NAME, app=self.app, session_id=session_id,
+        anvil = Anvil(self.config.anvil_for(self.app), POLICY_NAME, app=self.app, session_id=session_id,
                       classifier=self._classifier)
         if self._http_transport is not None:
             anvil._transport = self._http_transport

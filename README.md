@@ -149,7 +149,7 @@ dashboard:
 | `apps` | Anvil Phase 2 apps: `base_url`, `auth` (header + `secret_env` env var name, never the secret), `tools` (`path`, `method`, `trust`, `parameters`, `redact_fields`, ...). `redact_fields` strips secrets a tool returns before the agent or any trace sees them. |
 | `agents` | `app.agent`: `instructions`, `prompt_version`, `backend` (`openai` \| `anthropic`), `model`, `tools` (bare = own app, `app.tool` = granted), optional `description`, `sequences`, `strictness`, `trust_overrides` |
 | `flows` | `app.flow`: `entry`, `nodes` (`agent`, `task`), `edges` (`from`, `to`, optional `condition_key`). Nodes must be the flow's own app's agents. |
-| `grants` | `{tool: notify.send_email, to_apps: [ironclad]}` |
+| `grants` | `{tool: notify.send_email, to_apps: [ironclad]}`. A granted tool is called with the **consumer's own credential**, issued to it by the granting app: the consumer app lists `credentials: {notify: env:IRONCLAD_NOTIFY_KEY}`. The granting app's secret is never read by the consumer (its `auth` there may be just `header` and `prefix`), and a granted tool from an app with `auth` but no consumer credential is a load-time `ConfigError`. Control-plane bundles carry only the granting app's header scheme. |
 | `settings` | Passed to Anvil (for example `injection_scanning`) |
 | `classifier` | `enabled` (default true), `provider`, `model` |
 | `dashboard` | optional: `include_content` (default false), `url`, `key` (default to `BASTION_URL` / `BASTION_KEY`), `flush_interval` (5), `batch_size` (20) |

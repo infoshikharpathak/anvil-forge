@@ -23,6 +23,13 @@
     grants:
       - {tool: notify.send_email, to_apps: [ironclad]}
 
+Cross-app tools use the CONSUMER's own credential, issued to it by the
+granting app, never the granting app's: the consumer app lists them as
+``credentials: {notify: env:IRONCLAD_NOTIFY_KEY}``. The granting app's
+``auth`` then only says how to send it (``header``, ``prefix``; a
+``secret_env`` there is used by the granting app's own agents only). A
+granted tool whose app has auth but no consumer credential is a ConfigError.
+
 Everything compiles into one Anvil config. Agent tool lists become each
 agent's ``allowed_tools`` and flow edges become ``allowed_delegations``,
 so the Anvil policy is the single source of truth for what an agent may
@@ -145,9 +152,27 @@ class PlatformConfig(BaseModel):
 class CompiledConfig:
     """The validated platform config plus the Anvil config compiled from it."""
 
-    def __init__(self, platform: PlatformConfig, anvil: AnvilConfig) -> None:
+    def __init__(self, platform: PlatformConfig, anvil: AnvilConfig,
+                 credentials: dict[str, dict[str, str]] | None = None) -> None:
         self.platform = platform
         self.anvil = anvil
+        # consumer app -> {granting app: env var holding the consumer's credential}
+        self.credentials = credentials or {}
+
+    def anvil_for(self, app: str) -> AnvilConfig:
+        """The Anvil config as *app* runs it: its own auth for its own tools,
+        its own credential for every other app's (granted) tools. Another
+        app's secret_env is never read; an app *app* holds no credential for
+        gets no auth at all."""
+        apps = {}
+        for name, cfg in self.anvil.apps.items():
+            if name == app or cfg.auth is None:
+                apps[name] = cfg
+                continue
+            env = self.credentials.get(app, {}).get(name)
+            auth = cfg.auth.model_copy(update={"secret_env": env}) if env else None
+            apps[name] = cfg.model_copy(update={"auth": auth})
+        return self.anvil.model_copy(update={"apps": apps})
 
     def agent_tools(self, agent_id: str) -> list[str]:
         """Tool names the agent may use, read from the Anvil policy and spelled
@@ -191,9 +216,50 @@ def load_config(source: str | Path | dict[str, Any]) -> CompiledConfig:
     return compile_config(platform)
 
 
+_NO_SECRET = "BASTION_CONSUMER_CREDENTIAL"  # placeholder: a scheme-only auth ({header, prefix})
+
+
+def _split_credentials(apps: dict[str, dict[str, Any]], errors: list[str]):
+    """(apps for Anvil, {consumer: {granting app: env var}}). ``credentials``
+    is bastion's, not Anvil's: taken out, and values must be 'env:VAR'."""
+    out, creds = {}, {}
+    for name, section in apps.items():
+        section = dict(section or {})
+        raw = section.pop("credentials", None) or {}
+        if not isinstance(raw, dict):
+            errors.append(f"app {name!r}: credentials must map app names to 'env:VAR'")
+            raw = {}
+        for target, value in raw.items():
+            if not isinstance(value, str) or not value.startswith("env:") or len(value) <= 4:
+                errors.append(f"app {name!r}: credential for {target!r} must be 'env:VAR', got {value!r}")
+                continue
+            creds.setdefault(name, {})[target] = value[4:]
+        auth = section.get("auth")
+        if isinstance(auth, dict) and "secret_env" not in auth:
+            section["auth"] = {**auth, "secret_env": _NO_SECRET}
+        out[name] = section
+    return out, creds
+
+
 def compile_config(platform: PlatformConfig) -> CompiledConfig:
     errors: list[str] = []
     declared_apps = set(platform.apps)
+    anvil_apps, credentials = _split_credentials(platform.apps, errors)
+
+    # A granted tool is called with the consumer's own credential.
+    for grant in platform.grants:
+        tool = grant.get("tool")
+        if not tool:
+            continue
+        source = app_of(tool)
+        if not (platform.apps.get(source) or {}).get("auth"):
+            continue  # the granting app needs no auth
+        for consumer in grant.get("to_apps") or []:
+            if consumer in declared_apps and consumer != source and source not in credentials.get(consumer, {}):
+                errors.append(
+                    f"app {consumer!r} is granted {tool!r} but has no credential for app {source!r}: "
+                    f"add credentials: {{{source}: env:VAR}} to app {consumer!r} (a key {source!r} issued to it)"
+                )
 
     for aid in platform.agents:
         if app_of(aid) not in declared_apps:
@@ -238,7 +304,7 @@ def compile_config(platform: PlatformConfig) -> CompiledConfig:
         for aid, a in platform.agents.items()
     }
     raw_anvil = {
-        "apps": platform.apps,
+        "apps": anvil_apps,
         "policies": {POLICY_NAME: {"description": "Compiled by bastion", "agents": agents_policy}},
         "grants": platform.grants,
         "settings": platform.settings,
@@ -247,7 +313,7 @@ def compile_config(platform: PlatformConfig) -> CompiledConfig:
         anvil_config = load_config_dict(raw_anvil)
     except AnvilConfigError as e:
         raise ConfigError(str(e).replace("Invalid anvil config", "Invalid bastion config")) from e
-    return CompiledConfig(platform, anvil_config)
+    return CompiledConfig(platform, anvil_config, credentials)
 
 
 __all__ = [
