@@ -48,10 +48,12 @@ _JSON_OBJECT = re.compile(r"\{.*\}", re.DOTALL)
 UsageObserver = Callable[[RunContext | None, dict[str, Any]], None]
 
 
-def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    from agent_forge.tracing import _estimate_cost as forge_cost  # same table as agent costs
+def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    """Same price table as agent costs (agent_forge.pricing); None if the
+    model has no price there."""
+    from agent_forge.pricing import estimate_cost
 
-    return forge_cost(model, input_tokens, output_tokens)
+    return estimate_cost(model, input_tokens, output_tokens)
 
 
 class ProviderClassifier:
@@ -113,7 +115,7 @@ class ProviderClassifier:
             "model": self.model,
             "input_tokens": usage[0],
             "output_tokens": usage[1],
-            "cost_usd": round(_estimate_cost(self.model, *usage), 6),
+            "cost_usd": _estimate_cost(self.model, *usage),  # None: unpriced model
             "detected": detected,  # None: the reply wasn't a verdict, so Anvil used its regex scan
             "pattern": pattern,
         })

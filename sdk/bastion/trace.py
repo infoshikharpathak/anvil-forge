@@ -249,7 +249,7 @@ def build_trace(
 ) -> dict[str, Any]:
     from .agents import anvil_agent_id
 
-    from agent_forge.tracing import _estimate_cost
+    from agent_forge.pricing import estimate_cost, sum_costs
 
     registered = compiled.platform.agents
     agent_ids = list(dict.fromkeys(
@@ -275,7 +275,7 @@ def build_trace(
             "status": entry["status"],
             "input_tokens": entry["input_tokens"],
             "output_tokens": entry["output_tokens"],
-            "cost_usd": round(_estimate_cost(entry["model"], entry["input_tokens"], entry["output_tokens"]), 6),
+            "cost_usd": estimate_cost(entry["model"], entry["input_tokens"], entry["output_tokens"]),
             "latency_ms": entry["latency_ms"],
             "prompt": spec.instructions if spec else None,
             "input": inputs[i] if i < len(inputs) else None,
@@ -307,8 +307,12 @@ def build_trace(
 
     scan_in = sum(s["input_tokens"] for s in collector.scans)
     scan_out = sum(s["output_tokens"] for s in collector.scans)
-    scan_cost = round(sum(s["cost_usd"] for s in collector.scans), 6)
-    agent_cost = round(sum(a["cost_usd"] for a in agents), 6)
+    # Unpriced calls (cost_usd None) are left out of every total and listed in
+    # totals.unpriced_models; a total with nothing priced in it is None.
+    # No calls at all is a genuine $0.
+    scan_cost = sum_costs([s["cost_usd"] for s in collector.scans]) if collector.scans else 0.0
+    agent_cost = sum_costs([a["cost_usd"] for a in agents]) if agents else 0.0
+    unpriced = sorted({e.get("model") or "<none>" for e in [*agents, *collector.scans] if e["cost_usd"] is None})
 
     return {
         "trace_id": collector.trace_id,
@@ -340,9 +344,10 @@ def build_trace(
         "totals": {
             "input_tokens": sum(a["input_tokens"] for a in agents) + scan_in,
             "output_tokens": sum(a["output_tokens"] for a in agents) + scan_out,
-            "cost_usd": round(agent_cost + scan_cost, 6),
+            "cost_usd": sum_costs([agent_cost, scan_cost]),
             "agent_cost_usd": agent_cost,
             "scan_cost_usd": scan_cost,
+            "unpriced_models": unpriced,
             "latency_ms": round((time.perf_counter() - collector._t0) * 1000, 1),
         },
         "anvil_records": anvil_records,
@@ -454,7 +459,8 @@ def dashboard_record(trace: dict[str, Any], *, include_content: bool = False) ->
         "duration_ms": totals.get("latency_ms"), "status": _status(trace),
         "model": max(set(models), key=models.count) if models else None,
         "token_input": totals.get("input_tokens", 0), "token_output": totals.get("output_tokens", 0),
-        "cost_usd": totals.get("cost_usd", 0.0),
+        "cost_usd": totals.get("cost_usd"),
+        "unpriced_models": list(totals.get("unpriced_models") or []),
         "tool_calls": tool_calls,
         "steps": [{k: v for k, v in st.items()} for st in trace.get("steps") or []],
         "agents": [{k: a.get(k) for k in ("agent", "registered", "prompt_version", "backend", "model", "status",

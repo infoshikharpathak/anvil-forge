@@ -97,6 +97,19 @@ def test_record_is_metadata_only_by_default():
                                "detected": False, "pattern": None, "input_tokens": 7, "output_tokens": 3}
 
 
+def test_unknown_cost_is_sent_as_null_with_the_unpriced_models():
+    t = full_trace()
+    t["agents"][0]["cost_usd"] = None
+    t["totals"] = {**t["totals"], "cost_usd": 0.00001, "unpriced_models": ["mystery-model"]}
+    rec = dashboard_record(t)
+    assert rec["cost_usd"] == 0.00001 and rec["unpriced_models"] == ["mystery-model"]
+    assert rec["agents"][0]["cost_usd"] is None
+    t["totals"]["cost_usd"] = None
+    assert dashboard_record(t)["cost_usd"] is None  # unknown, not 0.0
+    del t["totals"]["unpriced_models"]
+    assert dashboard_record(t)["unpriced_models"] == []  # traces from older SDKs
+
+
 def test_content_is_opt_in_and_redacted():
     rec = dashboard_record(full_trace(), include_content=True)
     c = rec["content"]
