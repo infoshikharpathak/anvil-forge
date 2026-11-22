@@ -523,6 +523,7 @@ class Platform:
                 {
                     "before": relative(s.before, self.app),
                     "requires": [relative(r, self.app) for r in s.requires],
+                    "requires_any": [relative(r, self.app) for r in s.requires_any],
                     "match_fields": list(s.match_fields),
                 }
                 for s in policy.sequences

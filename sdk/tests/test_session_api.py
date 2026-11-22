@@ -109,7 +109,8 @@ def test_describe_agent(monkeypatch):
         {"name": "get_accounts", "trust": "untrusted", "injection_scanning": True, "description": "List the user's accounts."},  # override wins
         {"name": "initiate_transfer", "trust": "untrusted", "injection_scanning": True, "description": "Start a transfer."},
     ]
-    assert d["sequences"] == [{"before": "initiate_transfer", "requires": ["get_accounts"], "match_fields": ["user_id"]}]
+    assert d["sequences"] == [{"before": "initiate_transfer", "requires": ["get_accounts"], "requires_any": [],
+                              "match_fields": ["user_id"]}]
     assert d["settings"] == {"injection_scanning": True, "default_trust": "untrusted", "session_ttl": 3600}
     assert p.describe_agent("resolver")["tools"][0]["name"] == "notify__send_email"
 
