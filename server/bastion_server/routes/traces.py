@@ -58,6 +58,10 @@ class TraceIn(BaseModel):
     flow: str | None = Field(default=None, max_length=200)
     session_id: str | None = Field(default=None, max_length=200)
     bundle_revision: int | None = None
+    caller_app: str | None = Field(default=None, max_length=100)
+    parent_trace_id: str | None = Field(default=None, max_length=64)
+    chain: list[str] = Field(default_factory=list, max_length=20)
+    child_traces: list[dict[str, Any]] = Field(default_factory=list, max_length=200)
     prompt_version: str | None = Field(default=None, max_length=100)
     started_at: datetime
     ended_at: datetime
@@ -201,13 +205,14 @@ def ingest(
             app_id=app.id, agent_id=agent_id, agent_name=agent_name, flow_name=flow_name, app_key_id=key.id,
             trace_id=rec.trace_id, run_id=rec.run_id, session_id=rec.session_id,
             bundle_revision=rec.bundle_revision, prompt_version=rec.prompt_version,
+            caller_app=rec.caller_app, parent_trace_id=rec.parent_trace_id, chain=list(rec.chain),
             started_at=rec.started_at, ended_at=rec.ended_at, duration_ms=round(duration, 1),
             status=rec.status, model=rec.model, token_input=rec.token_input, token_output=rec.token_output,
             cost_usd=rec.cost_usd, unpriced=rec.cost_usd is None or bool(rec.unpriced_models),
             tool_calls=rec.tool_calls, steps=rec.steps,
             summary={"kind": rec.kind, "agents": rec.agents, "violations": rec.violations,
                      "scans": rec.scans, "hook_denials": rec.hook_denials,
-                     "unpriced_models": rec.unpriced_models},
+                     "unpriced_models": rec.unpriced_models, "child_traces": rec.child_traces},
             content=rec.content, received_at=now,
         ))
     db.flush()

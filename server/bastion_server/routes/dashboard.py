@@ -233,9 +233,45 @@ def _timeline(t: Trace) -> dict[str, Any]:
     return {"span_ms": round(span, 1), "steps": out}
 
 
+def _trace_link(db: Session, owner_id: int, trace_id: str | None, app_hint: str | None = None) -> dict[str, Any] | None:
+    """A link to a trace in any of the owner's apps (other apps included)."""
+    if not trace_id:
+        return None
+    row = db.execute(
+        select(Trace, App).join(App, App.id == Trace.app_id)
+        .where(App.owner_id == owner_id, Trace.trace_id == trace_id).order_by(Trace.started_at).limit(1)
+    ).first()
+    if row is None:
+        return {"trace_id": trace_id, "app": app_hint, "href": None, "agent": None}
+    tr, a = row
+    return {"trace_id": trace_id, "app": a.name, "agent": tr.agent_name,
+            "href": f"/ui/apps/{a.name}/traces/{trace_id}"}
+
+
+def _links(db: Session, app: App, t: Trace) -> dict[str, Any]:
+    """Agent-to-agent links: the parent trace (the caller's) and child traces
+    (runs this one started in other apps), both ways: children are found by
+    their parent_trace_id and from this trace's own child_traces."""
+    parent = _trace_link(db, app.owner_id, t.parent_trace_id, t.caller_app)
+    children: dict[str, dict[str, Any]] = {}
+    rows = db.execute(
+        select(Trace, App).join(App, App.id == Trace.app_id)
+        .where(App.owner_id == app.owner_id, Trace.parent_trace_id == t.trace_id).order_by(Trace.started_at)
+    ).all()
+    for tr, a in rows:
+        children.setdefault(tr.trace_id, {"trace_id": tr.trace_id, "app": a.name, "agent": tr.agent_name,
+                                          "href": f"/ui/apps/{a.name}/traces/{tr.trace_id}"})
+    for c in (t.summary or {}).get("child_traces") or []:
+        tid = str(c.get("trace_id") or "")
+        if tid and tid not in children:
+            children[tid] = _trace_link(db, app.owner_id, tid, c.get("app"))
+    return {"caller_app": t.caller_app, "chain": t.chain or [], "parent": parent, "children": list(children.values())}
+
+
 def _detail(db: Session, app: App, t: Trace) -> dict[str, Any]:
     summary = t.summary or {}
     return {
+        **_links(db, app, t),
         **_row(t), "bundle_revision": t.bundle_revision, "ended_at": aware(t.ended_at),
         "kind": summary.get("kind", "agent"), "prompt": _prompt_link(db, app, t),
         "timeline": _timeline(t), "tool_calls": [

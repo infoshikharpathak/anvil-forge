@@ -14,6 +14,16 @@
     <dt>Session</dt><dd class="mono">{% if t.session_id %}<a href="/ui/apps/{{ app.name }}/sessions/{{ t.session_id|urlencode }}">{{ t.session_id }}</a>{% else %}—{% endif %}</dd>
     <dt>Bundle revision</dt><dd>{% if t.bundle_revision is not none %}<span class="mono">{{ t.bundle_revision }}</span>{% else %}— (library mode){% endif %}
       {% if t.prompt %} · prompt {% if t.prompt.href %}<a href="{{ t.prompt.href }}" class="mono">{{ t.prompt.label }}</a>{% else %}<span class="mono">{{ t.prompt.label }}</span> <span class="sub-inline">(not in the service)</span>{% endif %}{% endif %}</dd>
+    {% if t.caller_app or t.parent %}
+    <dt>Called by</dt><dd>{% if t.caller_app %}<span class="mono">{{ t.caller_app }}</span> <span class="sub-inline">(from its key)</span>{% endif %}
+      {% if t.parent %} · parent trace {% if t.parent.href %}<a href="{{ t.parent.href }}" class="mono">{{ t.parent.app }} / {{ t.parent.trace_id[:8] }}</a>{% else %}<span class="mono">{{ t.parent.trace_id[:8] }}</span> <span class="sub-inline">(not reported here)</span>{% endif %}{% endif %}</dd>
+    {% endif %}
+    {% if t.chain and t.chain|length > 1 %}
+    <dt>Chain</dt><dd class="mono">{{ t.chain|join(' → ') }} <span class="sub-inline">(hops before the direct caller are unverified)</span></dd>
+    {% endif %}
+    {% if t.children %}
+    <dt>Called</dt><dd>{% for c in t.children %}{% if c.href %}<a href="{{ c.href }}" class="mono">{{ c.app }} / {{ c.trace_id[:8] }}</a>{% else %}<span class="mono">{{ c.app }} / {{ c.trace_id[:8] }}</span> <span class="sub-inline">(not reported here)</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</dd>
+    {% endif %}
     <dt>Model</dt><dd class="mono">{{ t.model or '—' }}</dd>
     <dt>Started</dt><dd class="mono">{{ t.started_at|dt }} UTC</dd>
     <dt>Ended</dt><dd class="mono">{{ t.ended_at|dt }} UTC</dd>

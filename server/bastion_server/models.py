@@ -197,6 +197,12 @@ class Trace(Base):
     run_id: Mapped[str] = mapped_column(String(64))
     session_id: Mapped[str | None] = mapped_column(String(200), nullable=True)
     bundle_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Agent-to-agent: the app that called this run (from its authenticated
+    # key), the caller's trace, and the call chain (informational past the
+    # direct caller). Child traces (apps this run called) are in summary.
+    caller_app: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    parent_trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    chain: Mapped[list[Any]] = mapped_column(JSON, default=list, server_default="[]")
     prompt_version: Mapped[str | None] = mapped_column(String(100), nullable=True)
     started_at: Mapped[datetime] = mapped_column(Timestamp)
     ended_at: Mapped[datetime] = mapped_column(Timestamp)
