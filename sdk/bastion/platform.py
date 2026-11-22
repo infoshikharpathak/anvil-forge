@@ -19,6 +19,7 @@ app. Each run:
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 import os
 import time
@@ -124,6 +125,11 @@ class FlowResult:
         return self.content
 
 
+# Returned by an is_requested_action hook for a tool call that isn't an
+# action the user could have asked for (a read): no requested_check entry.
+NOT_AN_ACTION = object()
+
+
 @dataclass
 class _Session:
     """One conversation: an Anvil session plus the agents that remember it."""
@@ -134,6 +140,9 @@ class _Session:
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     last_used: float = field(default_factory=time.monotonic)
     config_version: int = 0
+    # Finished turns, oldest first: {"user", "reply", "tool_calls"}. Apps read
+    # them in is_requested_action (e.g. "send Bob 50" / "yes").
+    turns: list[dict[str, Any]] = field(default_factory=list)
 
 
 class Platform:
@@ -148,6 +157,7 @@ class Platform:
         http_transport: Any = None,
         prepare_tool_call: Any = None,
         on_output_blocked: Any = None,
+        is_requested_action: Any = None,
         bundle_revision: int | None = None,
     ) -> None:
         """*prepare_tool_call* ``(ctx, tool_name, params) -> params`` runs on
@@ -165,6 +175,10 @@ class Platform:
         # flag what a turn created when its reply is blocked, or delivered but
         # labeled unrequested_action (see _run_agent).
         self._on_output_blocked = on_output_blocked
+        # (session_turns, turn, action) -> True | False | None | NOT_AN_ACTION,
+        # sync or async: did the user ask for this action? Asked only when the
+        # classifier labels a reply unrequested_action; True = don't flag it.
+        self._is_requested = is_requested_action
         self._output_checks: dict[str, dict[str, Any]] = {}  # run_id -> what the output check decided
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
@@ -559,8 +573,17 @@ class Platform:
                 # for (unrequested_action): flag what the turn created, so the
                 # user is warned before approving it. Nothing is cancelled.
                 calls = list(collector.tool_calls)
-                created = await self._flag_blocked_turn(agent_id, calls, check["reason"] or check["label"])
-                extra_trace = {"output_check": check, "flagged": [c["id"] for c in created if c.get("flagged")]}
+                turn = {"user": message, "reply": content, "tool_calls": calls}
+                requested = await self._requested_checks(sess, turn, calls)
+                # Without a hook, everything goes to the flag hook as before; with
+                # one, only actions it didn't match (mismatched or unknown).
+                unmatched = (calls if self._is_requested is None else
+                             [c for c, r in zip(calls, requested) if r in ("mismatched", "unknown")])
+                created = (await self._flag_blocked_turn(agent_id, unmatched, check["reason"] or check["label"])
+                           if unmatched else [])
+                extra_trace = {"output_check": check, "flagged": [c["id"] for c in created if c.get("flagged")],
+                               "requested_check": [{"tool": c["tool"], "result": r}
+                                                   for c, r in zip(calls, requested) if r is not None]}
                 if any(not c.get("flagged") for c in created):
                     extra_trace["flag_failed"] = [c["id"] for c in created if not c.get("flagged")]
             if blocked is not None:
@@ -581,6 +604,8 @@ class Platform:
                     extra_trace["flag_failed"] = [c["id"] for c in created if not c.get("flagged")]
             return_value = RunResult(content, status, agent_id, tracer.trace_id, tracer.run_id,
                                      session_id=sess.id if sess else None)
+            if sess is not None:
+                sess.turns.append({"user": message, "reply": content, "tool_calls": list(collector.tool_calls)})
         except Exception as exc:
             error = repr(exc)
             raise
@@ -685,6 +710,27 @@ class Platform:
         # The config this run started on: a refresh mid-run mustn't change how
         # the run executes, or how its trace describes it.
         return factory, tracer, collector, self.config
+
+    async def _requested_checks(self, sess: _Session | None, turn: dict, calls: list[dict]) -> list[str | None]:
+        """Per tool call: matched / mismatched / unknown (the app's
+        is_requested_action said True / False / None), or None when it isn't
+        an action (NOT_AN_ACTION) or there's no hook. Never raises."""
+        out: list[str | None] = []
+        history = list(sess.turns) if sess is not None else []
+        for call in calls:
+            if self._is_requested is None or not call.get("tool_executed"):
+                out.append(None)
+                continue
+            try:
+                result = self._is_requested(history, turn, call)
+                if inspect.isawaitable(result):
+                    result = await result
+            except Exception:
+                log.exception("[platform] is_requested_action failed")
+                result = None
+            out.append(None if result is NOT_AN_ACTION else
+                       "matched" if result is True else "mismatched" if result is False else "unknown")
+        return out
 
     async def _flag_blocked_turn(self, agent_id: str, calls: list[dict[str, Any]],
                                  reason: str) -> list[dict[str, Any]]:

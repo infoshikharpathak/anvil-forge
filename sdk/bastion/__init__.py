@@ -7,10 +7,11 @@
 """
 
 from .config import ConfigError, load_config
-from .platform import FlowResult, Platform, PlatformError, RunResult
+from .platform import NOT_AN_ACTION, FlowResult, Platform, PlatformError, RunResult
 from .trace import DashboardSink, LocalSink, TraceExporter, TraceSink
 
 __all__ = [
+    "NOT_AN_ACTION",
     "ConfigError", "DashboardSink", "FlowResult", "LocalSink", "Platform",
     "PlatformError", "RunResult", "TraceExporter", "TraceSink", "load_config",
 ]

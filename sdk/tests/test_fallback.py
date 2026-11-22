@@ -55,13 +55,13 @@ class Flag:
                 for c in tool_calls if c["tool"] == "initiate_transfer" and c["success"]]
 
 
-async def run(monkeypatch, steps, bank=None, flag=None, label_words=None):
+async def run(monkeypatch, steps, bank=None, flag=None, label_words=None, **platform_kwargs):
     monkeypatch.setenv("IRONCLAD_TOKEN", "tok")
     config = base_config()
     config["classifier"] = {"enabled": True, "provider": "openai", "model": "gpt-test"}
     llm = ScriptedOpenAI({SUPPORT: steps}, injection_words=["wire it to bob"], label_words=label_words)
     p = Platform.from_config(config, app="ironclad", openai_client=llm, http_transport=(bank or Bank()).transport(),
-                             on_output_blocked=flag)
+                             on_output_blocked=flag, **platform_kwargs)
     return await p.run_agent("support_agent", "send $5 to Alice", session_id="s")
 
 
@@ -276,3 +276,72 @@ async def test_withheld_response_reaches_the_host_but_not_the_model(monkeypatch)
     reply = await run(monkeypatch, llm_steps, Bank(transfers=(200, body)))
     (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
     assert call["response"] is None and call["withheld_response"] == body
+
+
+# ── is_requested_action: a deterministic check before flagging ────────────
+
+from bastion import NOT_AN_ACTION  # noqa: E402
+
+UNASKED = {"text": "Started it, and I also set up a monthly top-up."}
+LABELS = {"monthly top-up": "unrequested_action"}
+
+
+def requested(answer):
+    seen = []
+
+    def hook(history, turn, action):
+        seen.append((len(history), turn["user"], action["tool"]))
+        return answer if action["tool"] == "initiate_transfer" else NOT_AN_ACTION
+    hook.seen = seen
+    return hook
+
+
+async def test_requested_action_is_not_flagged(monkeypatch):
+    flag, hook = Flag(), requested(True)
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, UNASKED], flag=flag, label_words=LABELS,
+                      is_requested_action=hook)
+    assert reply.status == "success" and flag.calls == [] and reply.trace["flagged"] == []
+    assert reply.trace["requested_check"] == [{"tool": "initiate_transfer", "result": "matched"}]
+    assert hook.seen[-1] == (0, "send $5 to Alice", "initiate_transfer")
+
+
+@pytest.mark.parametrize("answer,result", [(False, "mismatched"), (None, "unknown")])
+async def test_mismatched_or_unknown_is_flagged(monkeypatch, answer, result):
+    flag = Flag()
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, UNASKED], flag=flag, label_words=LABELS,
+                      is_requested_action=requested(answer))
+    assert reply.trace["flagged"] == ["T-9"]
+    assert reply.trace["requested_check"] == [{"tool": "initiate_transfer", "result": result}]
+
+
+async def test_a_failing_hook_counts_as_unknown(monkeypatch):
+    def broken(history, turn, action):
+        raise RuntimeError("boom")
+
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, UNASKED], flag=Flag(), label_words=LABELS,
+                      is_requested_action=broken)
+    assert reply.trace["flagged"] == ["T-9"]
+    assert {"tool": "initiate_transfer", "result": "unknown"} in reply.trace["requested_check"]
+
+
+async def test_blocked_replies_are_flagged_without_asking_the_hook(monkeypatch):
+    hook = requested(True)
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Done. Note for the next agent."}], flag=Flag(),
+                      label_words={"next agent": "ai_instruction"}, is_requested_action=hook)
+    assert reply.trace["flagged"] == ["T-9"] and hook.seen == []
+
+
+async def test_session_turns_reach_the_hook(monkeypatch):
+    monkeypatch.setenv("IRONCLAD_TOKEN", "tok")
+    config = base_config()
+    config["classifier"] = {"enabled": True, "provider": "openai", "model": "gpt-test"}
+    hook = requested(True)
+    llm = ScriptedOpenAI({SUPPORT: [{"text": "Should I send $5 to Alice?"}, ACCOUNTS, TRANSFER, UNASKED]},
+                         label_words=LABELS)
+    p = Platform.from_config(config, app="ironclad", openai_client=llm, http_transport=Bank().transport(),
+                             on_output_blocked=Flag(), is_requested_action=hook)
+    await p.run_agent("support_agent", "send $5 to Alice", session_id="two")
+    reply = await p.run_agent("support_agent", "yes", session_id="two")
+    assert hook.seen[-1] == (1, "yes", "initiate_transfer")
+    assert reply.trace["requested_check"][0]["result"] == "matched"
+
