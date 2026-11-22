@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   # Pinned to the current main commits (Anvil Phase 2, Agent Forge Phase 3).
   # Full SHAs: pip only caches wheels built from git refs that are immutable commits.
-  "anvil-ai @ git+https://github.com/infoshikharpathak/anvil.git@e6f8d91ddbae5b11c6230102f9cc742a2d0de388",
+  "anvil-ai @ git+https://github.com/infoshikharpathak/anvil.git@602894a42c9bbb97e8f3fe9fce27134f9fe82120",
   "agent-forge @ git+https://github.com/infoshikharpathak/Agent-Forge.git@57d62a88136656a6c2a4629ce1bd70f04a6dd0c2",
   "pydantic>=2.0",
   "pyyaml>=6.0",
