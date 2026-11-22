@@ -39,6 +39,9 @@ class AnvilHooks(AgentHooks):
     def __init__(self, anvil: Anvil, app: str) -> None:
         self._anvil = anvil
         self._app = app
+        # The task each agent run started with, so the output check can tell
+        # the classifier what the user asked (keyed by run and agent).
+        self._tasks: dict[tuple[str, str | None], str] = {}
 
     def _id(self, name: str | None) -> str:
         # Unregistered (e.g. planner-spawned) agents get an ID Anvil can never
@@ -50,15 +53,19 @@ class AnvilHooks(AgentHooks):
     # classifier's scan of a handoff payload would not be attributed to the run.
 
     async def before_agent_run(self, ctx: RunContext, task: str) -> HookDecision:
+        self._tasks[(ctx.run_id, ctx.agent_name)] = task
         with use_run_context(ctx):
             return _decision(
                 await self._anvil.check_agent_input(self._id(ctx.agent_name), task, trace_id=ctx.trace_id)
             )
 
     async def after_agent_run(self, ctx: RunContext, output: str) -> HookDecision:
+        task = self._tasks.pop((ctx.run_id, ctx.agent_name), None)
         with use_run_context(ctx):
             return _decision(
-                await self._anvil.check_agent_output(self._id(ctx.agent_name), output, trace_id=ctx.trace_id)
+                await self._anvil.check_agent_output(
+                    self._id(ctx.agent_name), output, trace_id=ctx.trace_id, user_request=task
+                )
             )
 
     async def on_handoff(
