@@ -1,6 +1,9 @@
 """SDK surface for apps building their own views: prepare_tool_call,
 session_records, session_prerequisites, describe_agent."""
 
+import json
+
+import httpx
 import pytest
 
 from bastion import Platform, PlatformError
@@ -122,3 +125,45 @@ def test_trust_overrides_compile_into_policy_and_are_validated(monkeypatch):
     cfg["agents"]["ironclad.support_agent"]["trust_overrides"] = {"close_account": "trusted"}
     with pytest.raises(ConfigError, match="trust_overrides references 'ironclad.close_account' not in allowed_tools"):
         load_config(cfg)
+
+
+async def test_prepare_can_add_a_host_only_param_the_model_cannot_send(monkeypatch):
+    """A param prepare adds that the tool's schema doesn't declare goes
+    through (it's the host's); the same param sent by the model is blocked."""
+    def prepare(ctx, name, params):
+        return {**params, "user_id": "signed-in-user", "channel": "agent"}
+
+    p, upstream = make(monkeypatch, [
+        {"tool": "get_accounts", "args": {"user_id": "u"}},
+        {"tool": "initiate_transfer", "args": {"amount": 5}},
+        {"tool": "initiate_transfer", "args": {"amount": 5, "channel": "branch"}},
+        {"text": "done"},
+    ], prepare_tool_call=prepare)
+    reply = await p.run_agent("support_agent", "send $5", session_id="s-host")
+    calls = reply.trace["tool_calls"]
+    assert [c["success"] for c in calls] == [True, True, False]
+    assert calls[2]["violation"] == "invalid_params" and "channel: unknown field" in calls[2]["correction"]
+    sent = json.loads(upstream.requests[1].content)
+    assert sent == {"user_id": "signed-in-user", "amount": 5, "channel": "agent"}
+    assert len(upstream.requests) == 2  # the model's channel never left
+
+
+async def test_upstream_error_body_reaches_the_model_and_the_records(monkeypatch):
+    class Refusing(Upstream):
+        def __call__(self, request):
+            if request.url.path == "/transfers":
+                self.requests.append(request)
+                return httpx.Response(403, json={"error": "LIMIT", "message": "Over the daily limit."})
+            return super().__call__(request)
+
+    monkeypatch.setenv("IRONCLAD_TOKEN", "tok")
+    steps = [{"tool": "get_accounts", "args": {"user_id": "u"}},
+             {"tool": "initiate_transfer", "args": {"user_id": "u", "amount": 5}}, {"text": "over the limit"}]
+    llm = ScriptedOpenAI({SUPPORT: steps})
+    p = Platform.from_config(base_config(), app="ironclad", openai_client=llm, http_transport=Refusing().transport())
+    reply = await p.run_agent("support_agent", "send $5", session_id="s-err")
+    (_, refused) = reply.trace["tool_calls"]
+    assert refused["success"] is False and refused["violation"] == "upstream_error"
+    assert refused["response"] == {"http_status": 403, "body": {"error": "LIMIT", "message": "Over the daily limit."}}
+    (record,) = [r for r in p.session_records("s-err") if r["tool"] == "ironclad.initiate_transfer"]
+    assert (record["result"], record["violation"], record["http_status"]) == ("blocked", "upstream_error", 403)

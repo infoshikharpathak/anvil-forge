@@ -83,12 +83,21 @@ class AnvilToolSource:
         anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
         started = time.perf_counter()
         try:
+            model_params, host_params = dict(args), {}
             if self._prepare is not None:
-                args = dict(self._prepare(ctx, name, dict(args)))
+                prepared = dict(self._prepare(ctx, name, dict(args)))
+                # What prepare added or changed is the host's, not the model's:
+                # Anvil lets those through its schema check (a host-only field
+                # the model didn't send may be undeclared). Anything the model
+                # sent is checked as the model's, so it can't set such a field.
+                host_params = {k: v for k, v in prepared.items() if k not in args or args[k] != v}
+                model_params = {k: v for k, v in args.items() if k in prepared}
+                args = prepared
             response = await anvil.execute(
                 agent_id=anvil_agent_id(ctx.agent_name, self._app, anvil.policy_engine.policy.agents),
                 tool_name=tool_id,
-                params=args,
+                params=model_params,
+                host_params=host_params,
                 trace_id=ctx.trace_id,
             )
             payload = response.model_dump(mode="json")
