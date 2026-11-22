@@ -43,7 +43,7 @@ import httpx
 
 from .agents import ClientProvider, PlatformFactory
 from .classifier import ProviderClassifier, default_provider
-from .fallback import fallback_reply, output_block
+from .fallback import INPUT_BLOCKED_REPLY, input_block, fallback_reply, output_block
 from .config import POLICY_NAME, CompiledConfig, ConfigError, load_config
 from .remote import BundleClient, BundleResult, ServiceError
 from .hooks import AnvilHooks
@@ -593,6 +593,12 @@ class Platform:
             result = await execute_agent(agent, message, agent_id, tracer, self._hooks(tracer.run_id))
             content, status = result.content, result.status
             outcome = "success" if status == "success" else status
+            refused = input_block(tracer.hook_denials) if status == "blocked" else None
+            if refused is not None:
+                # The user's message was blocked before the agent ran: show a
+                # plain line, keep the violation and pattern in the trace.
+                content = INPUT_BLOCKED_REPLY
+                extra_trace = {"input_blocked": {"reason": refused.get("message")}}
             blocked = output_block(tracer.hook_denials) if status == "withheld" else None
             check = self._output_checks.pop(tracer.run_id, None)
             if blocked is None and check is not None and check["result"] == "flag":

@@ -29,6 +29,20 @@ _CODE_KEYS = ("error", "code", "error_code")
 _MESSAGE_KEYS = ("message", "detail", "reason", "error_description")
 
 
+# What the user sees when Anvil blocks their message before the agent runs.
+# The violation and pattern stay in the trace (input_blocked), never here.
+INPUT_BLOCKED_REPLY = ("Sorry, I can't help with that request: it was stopped by a safety check. "
+                       "Try asking another way.")
+
+
+def input_block(hook_denials: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The before_agent_run denial that stopped this run, if any."""
+    for denial in reversed(hook_denials):
+        if ":before_agent_run:" in (denial.get("guardrail") or ""):
+            return denial
+    return None
+
+
 def output_block(hook_denials: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The after_agent_run denial for an output that failed the injection
     scan, if this run had one."""
