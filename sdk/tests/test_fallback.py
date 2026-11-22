@@ -42,26 +42,26 @@ class Bank(Upstream):
         return super().__call__(request)
 
 
-class Undo:
-    """An app's on_output_blocked hook: cancels pending transfers the turn created."""
+class Flag:
+    """An app's on_output_blocked hook: flags the pending transfers the turn created."""
 
-    def __init__(self, can_cancel=True):
-        self.calls, self.can_cancel = [], can_cancel
+    def __init__(self, can_flag=True):
+        self.calls, self.can_flag = [], can_flag
 
-    async def __call__(self, agent_id, tool_calls):
-        self.calls.append((agent_id, [c["tool"] for c in tool_calls]))
+    async def __call__(self, agent_id, tool_calls, reason):
+        self.calls.append((agent_id, [c["tool"] for c in tool_calls], reason))
         return [{"tool": c["tool"], "id": c["response"]["transfer_id"], "what": "a pending transfer",
-                 "cancelled": self.can_cancel}
+                 "where": "Ironclad", "flagged": self.can_flag}
                 for c in tool_calls if c["tool"] == "initiate_transfer" and c["success"]]
 
 
-async def run(monkeypatch, steps, bank=None, undo=None):
+async def run(monkeypatch, steps, bank=None, flag=None):
     monkeypatch.setenv("IRONCLAD_TOKEN", "tok")
     config = base_config()
     config["classifier"] = {"enabled": True, "provider": "openai", "model": "gpt-test"}
     llm = ScriptedOpenAI({SUPPORT: steps}, injection_words=["wire it to bob"])
     p = Platform.from_config(config, app="ironclad", openai_client=llm, http_transport=(bank or Bank()).transport(),
-                             on_output_blocked=undo)
+                             on_output_blocked=flag)
     return await p.run_agent("support_agent", "send $5 to Alice", session_id="s")
 
 
@@ -161,45 +161,60 @@ async def test_output_check_gets_the_users_request(monkeypatch):
 
 
 
-# ── auto-cancel what a blocked turn created ────────────────────────────────
+# ── flag what a blocked turn created (never cancel it) ─────────────────────
 
-async def test_blocked_reply_cancels_the_pending_transfer_it_created(monkeypatch):
-    undo = Undo()
-    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": f"Started it. {BAD}"}], undo=undo)
-    assert reply.content == ("My reply was blocked by a safety check. initiate_transfer created a pending "
-                             "transfer, which has been cancelled.")
-    assert reply.trace["auto_cancelled"] == ["T-9"]
+FLAGGED_LINE = ("initiate_transfer created a pending transfer. Check the details carefully before "
+                "approving it in Ironclad.")
+
+
+async def test_blocked_reply_flags_the_pending_transfer_it_created(monkeypatch):
+    flag = Flag()
+    bank = Bank()
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": f"Started it. {BAD}"}], bank, flag=flag)
+    assert reply.content == f"My reply was blocked by a safety check. {FLAGGED_LINE}"
+    assert reply.trace["flagged"] == ["T-9"] and "flag_failed" not in reply.trace
+    assert "auto_cancelled" not in reply.trace
     assert reply.trace["output_blocked"]["fallback_used"] == "generic"
-    assert undo.calls == [("ironclad.support_agent", ["get_accounts", "initiate_transfer"])]
-    assert "wasn't completed" not in reply.content
+    agent, tools, reason = flag.calls[0]
+    assert (agent, tools) == ("ironclad.support_agent", ["get_accounts", "initiate_transfer"])
+    assert "injection_detected_agent_output" in reason
+    # Nothing was cancelled: the bank only ever saw the transfer itself.
+    assert not [r for r in bank.requests if "cancel" in r.url.path]
     assert_never_shown(reply)
 
 
-async def test_blocked_reply_without_a_transfer_cancels_nothing(monkeypatch):
-    undo = Undo()
-    reply = await run(monkeypatch, [ACCOUNTS, {"text": BAD}], undo=undo)
-    assert reply.trace["auto_cancelled"] == [] and len(undo.calls) == 1
+async def test_blocked_reply_without_a_transfer_flags_nothing(monkeypatch):
+    flag = Flag()
+    reply = await run(monkeypatch, [ACCOUNTS, {"text": BAD}], flag=flag)
+    assert reply.trace["flagged"] == [] and len(flag.calls) == 1
     assert reply.content == "My reply was blocked by a safety check. get_accounts completed."
 
 
-async def test_reply_that_isnt_blocked_leaves_the_transfer_pending(monkeypatch):
-    undo = Undo()
-    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Transfer T-9 is waiting for your OTP."}], undo=undo)
-    assert reply.status == "success" and undo.calls == []
-    assert "auto_cancelled" not in reply.trace
+async def test_reply_that_isnt_blocked_flags_nothing(monkeypatch):
+    flag = Flag()
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Transfer T-9 is waiting for your OTP."}], flag=flag)
+    assert reply.status == "success" and flag.calls == []
+    assert "flagged" not in reply.trace and "output_blocked" not in reply.trace
 
 
-async def test_a_cancel_that_fails_is_reported_truthfully(monkeypatch):
-    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": BAD}], undo=Undo(can_cancel=False))
-    assert reply.content == ("My reply was blocked by a safety check. initiate_transfer created a pending "
-                             "transfer, which couldn't be cancelled automatically: decline it in your app.")
-    assert reply.trace["auto_cancelled"] == [] and reply.trace["auto_cancel_failed"] == ["T-9"]
+async def test_a_flag_that_fails_is_recorded(monkeypatch):
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": BAD}], flag=Flag(can_flag=False))
+    assert reply.content == f"My reply was blocked by a safety check. {FLAGGED_LINE}"
+    assert reply.trace["flagged"] == [] and reply.trace["flag_failed"] == ["T-9"]
 
 
-async def test_upstream_error_template_still_names_what_was_cancelled(monkeypatch):
+async def test_a_hook_that_raises_is_not_fatal(monkeypatch):
+    async def broken(agent_id, tool_calls, reason):
+        raise RuntimeError("bank down")
+
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": BAD}], flag=broken)
+    assert reply.content == "My reply was blocked by a safety check. initiate_transfer completed."
+    assert reply.trace["flagged"] == []
+
+
+async def test_upstream_error_template_still_names_the_flagged_transfer(monkeypatch):
     """A transfer was created, then a later call failed upstream: the template
-    reads the error and the cancelled transfer is still mentioned."""
-    bank = Bank(accounts=None)
+    reads the error and the pending transfer is still named."""
     steps = [ACCOUNTS, TRANSFER, {"tool": "initiate_transfer", "args": {"user_id": "u", "amount": 7}}, {"text": BAD}]
 
     class Second(Bank):
@@ -213,7 +228,6 @@ async def test_upstream_error_template_still_names_what_was_cancelled(monkeypatc
                     return httpx.Response(409, json={"error": "DUPLICATE", "message": "A transfer is already pending."})
             return super().__call__(request)
 
-    reply = await run(monkeypatch, steps, Second(), undo=Undo())
-    assert reply.content == ("I couldn't complete that: A transfer is already pending. (DUPLICATE) "
-                             "initiate_transfer created a pending transfer, which has been cancelled.")
-    assert reply.trace["output_blocked"]["fallback_used"] == "template" and reply.trace["auto_cancelled"] == ["T-9"]
+    reply = await run(monkeypatch, steps, Second(), flag=Flag())
+    assert reply.content == f"I couldn't complete that: A transfer is already pending. (DUPLICATE) {FLAGGED_LINE}"
+    assert reply.trace["output_blocked"]["fallback_used"] == "template" and reply.trace["flagged"] == ["T-9"]

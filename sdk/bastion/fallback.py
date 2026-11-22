@@ -3,7 +3,7 @@
 When the output scan flags the agent's final reply, none of the model's
 text may be shown. The user still needs to know what happened, so the reply
 is rebuilt from this turn's structured tool results and from what the app
-cancelled (Platform(on_output_blocked=...)):
+reported the turn created (Platform(on_output_blocked=...)):
 
 - If the last tool call ended as an upstream error whose body carries a
   readable code and message (the body wasn't withheld, and the message
@@ -11,8 +11,11 @@ cancelled (Platform(on_output_blocked=...)):
 - Otherwise: "My reply was blocked by a safety check." and what the last
   call actually did: completed, failed, was blocked, or had its result
   withheld. It never says something wasn't done when it was.
-- Either way, anything the turn created and the app cancelled is named:
-  "initiate_transfer created a pending transfer, which has been cancelled."
+- Either way, anything the turn created is named, and stays pending: the
+  block may be a false positive, so nothing is cancelled. The app flags it
+  instead, and the user is told to check it before approving:
+  "initiate_transfer created a pending transfer. Check the details carefully
+  before approving it in Ironclad."
 """
 
 from __future__ import annotations
@@ -39,16 +42,15 @@ def output_block(hook_denials: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 def fallback_reply(
     tool_calls: list[dict[str, Any]],
-    cancelled: list[dict[str, Any]] | None = None,
-    not_cancelled: list[dict[str, Any]] | None = None,
+    created: list[dict[str, Any]] | None = None,
 ) -> tuple[str, str]:
-    """(reply, kind) where kind is "template" or "generic". *cancelled* and
-    *not_cancelled* are what the app's on_output_blocked hook reported:
-    [{"tool", "id", "what"}], e.g. what = "a pending transfer"."""
-    after = [f"{c['tool']} created {c['what']}, which has been cancelled." for c in cancelled or []]
-    after += [f"{c['tool']} created {c['what']}, which couldn't be cancelled automatically: "
-              "decline it in your app." for c in not_cancelled or []]
-    handled = {c["tool"] for c in [*(cancelled or []), *(not_cancelled or [])]}
+    """(reply, kind) where kind is "template" or "generic". *created* is what
+    the app's on_output_blocked hook reported: [{"tool", "id", "what",
+    "where", "flagged"}], e.g. what = "a pending transfer", where =
+    "Ironclad" (the app the user approves it in; default "your app")."""
+    after = [f"{c['tool']} created {c['what']}. Check the details carefully before approving it "
+             f"in {c.get('where') or 'your app'}." for c in created or []]
+    handled = {c["tool"] for c in created or []}
     last = tool_calls[-1] if tool_calls else None
     if last is not None and last.get("violation") == "upstream_error":
         found = _code_and_message(last.get("response"))

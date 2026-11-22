@@ -161,8 +161,8 @@ class Platform:
         self._collectors = Collectors()
         self._http_transport = http_transport  # test seam for Anvil's upstream calls
         self._prepare = prepare_tool_call
-        # async (agent, tool_calls) -> [{"tool", "id", "what", "cancelled": bool}]:
-        # undo what a turn created when its reply is blocked (see _run_agent).
+        # async (agent, tool_calls, reason) -> [{"tool", "id", "what", "where", "flagged": bool}]:
+        # flag what a turn created when its reply is blocked (see _run_agent).
         self._on_output_blocked = on_output_blocked
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
@@ -554,17 +554,17 @@ class Platform:
             if blocked is not None:
                 # The output scan blocked the agent's reply: show none of the
                 # model's text, but tell the user what this turn's tools did.
+                # Anything the turn created stays pending (the reply may have
+                # been a false positive): the app flags it for the user instead.
                 calls = list(collector.tool_calls)
-                undone = await self._undo_blocked_turn(agent_id, calls)
-                cancelled = [u for u in undone if u.get("cancelled")]
-                not_cancelled = [u for u in undone if not u.get("cancelled")]
-                content, kind = fallback_reply(calls, cancelled, not_cancelled)
+                created = await self._flag_blocked_turn(agent_id, calls, blocked["message"])
+                content, kind = fallback_reply(calls, created)
                 extra_trace = {
                     "output_blocked": {"reason": blocked["message"], "fallback_used": kind},
-                    "auto_cancelled": [u["id"] for u in cancelled],
+                    "flagged": [c["id"] for c in created if c.get("flagged")],
                 }
-                if not_cancelled:
-                    extra_trace["auto_cancel_failed"] = [u["id"] for u in not_cancelled]
+                if any(not c.get("flagged") for c in created):
+                    extra_trace["flag_failed"] = [c["id"] for c in created if not c.get("flagged")]
             return_value = RunResult(content, status, agent_id, tracer.trace_id, tracer.run_id,
                                      session_id=sess.id if sess else None)
         except Exception as exc:
@@ -671,13 +671,14 @@ class Platform:
         # the run executes, or how its trace describes it.
         return factory, tracer, collector, self.config
 
-    async def _undo_blocked_turn(self, agent_id: str, calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Ask the app to cancel what this blocked turn created. Never raises:
-        a failing hook means nothing was cancelled (and the user is told)."""
+    async def _flag_blocked_turn(self, agent_id: str, calls: list[dict[str, Any]],
+                                 reason: str) -> list[dict[str, Any]]:
+        """Ask the app to flag what this blocked turn created. Never raises:
+        a failing hook means nothing was reported as flagged."""
         if self._on_output_blocked is None:
             return []
         try:
-            return list(await self._on_output_blocked(agent_id, calls) or [])
+            return list(await self._on_output_blocked(agent_id, calls, reason) or [])
         except Exception:
             log.exception("[platform] on_output_blocked failed")
             return []
