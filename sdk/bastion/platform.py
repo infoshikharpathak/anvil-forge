@@ -229,6 +229,7 @@ class Platform:
             anvil_for=lambda ctx: self._run_anvils.get(ctx.run_id),
             prepare=self._prepare,
             before_call=self._gate_tool_call if self._is_requested is not None else None,
+            a2a_for=self._a2a_for,
             after_call=self._after_tool_call,
             message_for=lambda ctx: getattr(self._collectors.for_ctx(ctx), "message", None),
         )
@@ -551,7 +552,8 @@ class Platform:
     # ── running ──────────────────────────────────────────────────────────────
 
     async def run_agent(
-        self, name: str, message: str, *, trace_id: str | None = None, session_id: str | None = None
+        self, name: str, message: str, *, trace_id: str | None = None, session_id: str | None = None,
+        caller_app: str | None = None, parent_trace_id: str | None = None, chain: list[str] | None = None,
     ) -> RunResult:
         """Run one registered agent on *message*.
 
@@ -559,19 +561,25 @@ class Platform:
         turns, e.g. verify-then-transfer across messages) and the same agent
         instance (it remembers the conversation). Runs in one session are
         serialized. Without it, each run starts clean.
+
+        For a run another app started (agent-to-agent), pass *caller_app*
+        (from the caller's authenticated key, see bastion.a2a), its
+        *parent_trace_id* and the *chain* so far; they go in the trace.
         """
         agent_id = self._qualify(name, self.config.platform.agents, "agent")
+        origin = {"caller_app": caller_app, "parent_trace_id": parent_trace_id, "chain": list(chain or [])}
         if session_id is None:
-            return await self._run_agent(agent_id, message, trace_id, None)
+            return await self._run_agent(agent_id, message, trace_id, None, origin)
         sess = self._session(session_id)
         async with sess.lock:
             await self._catch_up(sess)
-            result = await self._run_agent(agent_id, message, trace_id, sess)
+            result = await self._run_agent(agent_id, message, trace_id, sess, origin)
             sess.last_used = time.monotonic()
             return result
 
-    async def _run_agent(self, agent_id: str, message: str, trace_id: str | None, sess: _Session | None) -> RunResult:
-        run = await self._begin("agent", agent_id, message, trace_id, sess)
+    async def _run_agent(self, agent_id: str, message: str, trace_id: str | None, sess: _Session | None,
+                         origin: dict[str, Any] | None = None) -> RunResult:
+        run = await self._begin("agent", agent_id, message, trace_id, sess, origin)
         factory, tracer, collector, run_config = run
         content, status, outcome, error = "", "failed", "failed", None
         extra_trace: dict[str, Any] = {}
@@ -713,7 +721,8 @@ class Platform:
         return [TraceRecorderHooks(self._collectors),
                 AnvilHooks(self._run_anvils[run_id], self.app, on_output_check=self._output_checks.__setitem__)]
 
-    async def _begin(self, kind: str, target: str, message: str, trace_id: str | None, sess: _Session | None):
+    async def _begin(self, kind: str, target: str, message: str, trace_id: str | None, sess: _Session | None,
+                     origin: dict[str, Any] | None = None):
         await self.start()
         tracer = RunTracer(task=message, routing_tier="platform", app_id=self.app, trace_id=trace_id)
         # A session's runs share its Anvil instance; otherwise one per run.
@@ -723,12 +732,29 @@ class Platform:
             trace_id=tracer.trace_id, run_id=tracer.run_id, app=self.app,
             kind=kind, target=target, message=message, session_id=sess.id if sess else None,
             bundle_revision=self.bundle_revision,
+            caller_app=(origin or {}).get("caller_app"), parent_trace_id=(origin or {}).get("parent_trace_id"),
+            chain=[*((origin or {}).get("chain") or []), target],
         )
         self._collectors.start(collector)
         factory = PlatformFactory(self.config, self.app, self._clients, route=self._source.call)
         # The config this run started on: a refresh mid-run mustn't change how
         # the run executes, or how its trace describes it.
         return factory, tracer, collector, self.config
+
+    def _a2a_for(self, ctx: RunContext, tool_id: str) -> tuple[dict[str, Any], dict[str, str]] | None:
+        """For a remote_agent tool: (host params, host headers). The remote
+        session is one per session here, so the other agent keeps context
+        across turns; the chain is this run's chain (incoming hops + this
+        agent) and the trace ID is this run's, so the callee links back."""
+        if tool_id not in self.config.remote_tools:
+            return None
+        collector = self._collectors.for_ctx(ctx)
+        if collector is None:
+            return None
+        from .a2a import CALL_CHAIN_HEADER, TRACE_ID_HEADER
+
+        return ({"session_id": f"{self.app}-{collector.session_id or collector.run_id}"},
+                {CALL_CHAIN_HEADER: ",".join(collector.chain), TRACE_ID_HEADER: collector.trace_id})
 
     async def _gate_tool_call(self, ctx: RunContext, name: str, params: dict[str, Any]) -> str | None:
         """Before a tool runs: ask is_requested_action (phase "before"). For

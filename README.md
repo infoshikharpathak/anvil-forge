@@ -154,6 +154,43 @@ dashboard:
 | `classifier` | `enabled` (default true), `provider`, `model` |
 | `dashboard` | optional: `include_content` (default false), `url`, `key` (default to `BASTION_URL` / `BASTION_KEY`), `flush_interval` (5), `batch_size` (20) |
 
+## Agent-to-agent (A2A)
+
+An agent can call another app's agent as a tool. In the caller's config the
+other app's section declares it with `type: remote_agent`:
+
+```yaml
+apps:
+  fooddash:
+    base_url: http://localhost:8100
+    auth: {header: Authorization, prefix: "Bearer "}      # scheme only
+    tools:
+      ask_fooddash: {type: remote_agent, description: "Ask FoodDash's ordering agent."}
+  chathub:
+    credentials: {fooddash: env:CHATHUB_FOODDASH_KEY}       # issued by FoodDash
+grants: [{tool: fooddash.ask_fooddash, to_apps: [chathub]}]
+```
+
+It POSTs `{message, session_id}` to `{base_url}/agent/chat` (the model only
+writes `message`; the remote session is one per caller session) with the
+caller's own credential, `X-Bastion-Call-Chain` (e.g. `chathub.assistant`)
+and `X-Bastion-Trace-Id`. It's untrusted by default, so the other agent's
+reply is injection-scanned like any tool response, and the caller's trace
+lists the callee's trace in `child_traces`.
+
+The receiving app authenticates the caller with `bastion.a2a.CallerKeys`
+(keys it issued, stored as SHA-256) and starts the run with
+`run_agent(..., caller_app=caller.app, parent_trace_id=caller.parent_trace_id,
+chain=caller.chain)`. **Identity comes from the key only**: a header that
+claims another app changes nothing. Traces carry `caller_app`,
+`parent_trace_id` and `chain`, and the dashboard links a trace to its parent
+and its children across apps.
+
+**Limit: only the direct caller is verified.** The chain header and the
+parent trace ID are whatever the direct caller sent; hops before it are
+unverified. Signed call chains (each hop signs what it forwards, with keys
+from the control plane) are future work.
+
 ## Things to know
 
 - **Sessions.** Pass `session_id=` to `run_agent` or `run_flow` to carry a conversation across turns. Without one, every run starts clean.

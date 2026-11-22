@@ -158,6 +158,7 @@ class CompiledConfig:
         self.anvil = anvil
         # consumer app -> {granting app: env var holding the consumer's credential}
         self.credentials = credentials or {}
+        self.remote_tools: set[str] = set()  # canonical IDs of remote_agent tools
 
     def anvil_for(self, app: str) -> AnvilConfig:
         """The Anvil config as *app* runs it: its own auth for its own tools,
@@ -219,12 +220,43 @@ def load_config(source: str | Path | dict[str, Any]) -> CompiledConfig:
 _NO_SECRET = "BASTION_CONSUMER_CREDENTIAL"  # placeholder: a scheme-only auth ({header, prefix})
 
 
-def _split_credentials(apps: dict[str, dict[str, Any]], errors: list[str]):
+REMOTE_AGENT_PARAMETERS = {
+    "type": "object",
+    "properties": {"message": {
+        "type": "string", "minLength": 1, "maxLength": 4000,
+        "description": "What to ask the other app's agent, in plain language.",
+    }},
+    "required": ["message"],
+}
+
+
+def _remote_agent_tool(spec: dict[str, Any]) -> dict[str, Any]:
+    """``type: remote_agent``: another app's agent, called over HTTP as a tool.
+    POST {base_url}{path or /agent/chat} with {message, session_id}; the model
+    only writes the message. Untrusted by default, so the other agent's reply
+    is injection-scanned like any tool response."""
+    spec = {k: v for k, v in spec.items() if k != "type"}
+    return {"path": "/agent/chat", "trust": "untrusted", "timeout": 90, **spec,
+            "method": "POST", "parameters": REMOTE_AGENT_PARAMETERS}
+
+
+def _split_credentials(apps: dict[str, dict[str, Any]], errors: list[str], remote: set[str] | None = None):
     """(apps for Anvil, {consumer: {granting app: env var}}). ``credentials``
-    is bastion's, not Anvil's: taken out, and values must be 'env:VAR'."""
+    is bastion's, not Anvil's: taken out, and values must be 'env:VAR'.
+    remote_agent tools are compiled to plain Anvil tools; their IDs go in *remote*."""
     out, creds = {}, {}
     for name, section in apps.items():
         section = dict(section or {})
+        tools = dict(section.get("tools") or {})
+        for tname, tspec in tools.items():
+            if isinstance(tspec, dict) and tspec.get("type") == "remote_agent":
+                tools[tname] = _remote_agent_tool(tspec)
+                if remote is not None:
+                    remote.add(f"{name}.{tname}")
+            elif isinstance(tspec, dict) and "type" in tspec:
+                errors.append(f"tool {name}.{tname}: unknown type {tspec['type']!r} (only remote_agent)")
+        if tools:
+            section["tools"] = tools
         raw = section.pop("credentials", None) or {}
         if not isinstance(raw, dict):
             errors.append(f"app {name!r}: credentials must map app names to 'env:VAR'")
@@ -244,7 +276,8 @@ def _split_credentials(apps: dict[str, dict[str, Any]], errors: list[str]):
 def compile_config(platform: PlatformConfig) -> CompiledConfig:
     errors: list[str] = []
     declared_apps = set(platform.apps)
-    anvil_apps, credentials = _split_credentials(platform.apps, errors)
+    remote: set[str] = set()
+    anvil_apps, credentials = _split_credentials(platform.apps, errors, remote)
 
     # A granted tool is called with the consumer's own credential.
     for grant in platform.grants:
@@ -313,7 +346,9 @@ def compile_config(platform: PlatformConfig) -> CompiledConfig:
         anvil_config = load_config_dict(raw_anvil)
     except AnvilConfigError as e:
         raise ConfigError(str(e).replace("Invalid anvil config", "Invalid bastion config")) from e
-    return CompiledConfig(platform, anvil_config, credentials)
+    compiled = CompiledConfig(platform, anvil_config, credentials)
+    compiled.remote_tools = remote
+    return compiled
 
 
 __all__ = [

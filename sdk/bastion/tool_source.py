@@ -52,6 +52,7 @@ class AnvilToolSource:
         anvil_for: Callable[[RunContext], Anvil | None] | None = None,
         prepare: ToolCallPreparer | None = None,
         before_call: Any = None,
+        a2a_for: Any = None,
         after_call: Any = None,
         message_for: Callable[[RunContext], str | None] | None = None,
     ) -> None:
@@ -63,6 +64,7 @@ class AnvilToolSource:
         # async (ctx, name, params) -> block message | None: a host gate that
         # can refuse a call before it runs (violation unrequested_action).
         self._before = before_call
+        self._a2a_for = a2a_for  # (ctx, tool_id) -> (host_params, host_headers) | None, remote_agent tools
         self._message_for = message_for
         self._anvil = anvil
         self._app = app
@@ -155,13 +157,26 @@ class AnvilToolSource:
                 host_params = {k: v for k, v in prepared.items() if k not in args or args[k] != v}
                 model_params = {k: v for k, v in args.items() if k in prepared}
                 args = prepared
+            a2a = self._a2a_for(ctx, tool_id) if self._a2a_for else None
+            host_headers = None
+            if a2a is not None:
+                host_params = {**host_params, **a2a[0]}
+                host_headers = a2a[1]
+            kwargs = {"host_headers": host_headers} if host_headers else {}
             response = await anvil.execute(
                 agent_id=anvil_agent_id(ctx.agent_name, self._app, anvil.policy_engine.policy.agents),
                 tool_name=tool_id,
                 params=model_params,
                 host_params=host_params,
                 trace_id=ctx.trace_id,
+                **kwargs,
             )
+            if a2a is not None:
+                # The callee's trace, so this trace can link to it.
+                data = response.data if isinstance(response.data, dict) else response.withheld_data
+                child = data.get("trace_id") if isinstance(data, dict) else None
+                if child:
+                    extra = {**(extra or {}), "child_trace": {"app": tool_id.split(".", 1)[0], "trace_id": str(child)}}
             payload = response.model_dump(mode="json")  # excludes withheld_data
             withheld = response.withheld_data
         except Exception as exc:  # never raise into the agent loop

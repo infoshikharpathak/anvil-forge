@@ -60,6 +60,11 @@ class RunCollector:
     message: str
     session_id: str | None = None
     bundle_revision: int | None = None  # remote mode: which service revision this run used
+    # Agent-to-agent: who called this run. caller_app comes from the caller's
+    # authenticated key (never a header); chain is informational past it.
+    caller_app: str | None = None
+    parent_trace_id: str | None = None
+    chain: list[str] = field(default_factory=list)
     started_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     _t0: float = field(default_factory=time.perf_counter, repr=False)
     inputs: dict[str, list[str]] = field(default_factory=dict)
@@ -123,10 +128,11 @@ class Collectors:
             "correction": correction.get("message"),
             "required_actions": correction.get("required_actions") or [],
             "response": response.get("data"),
+            "child_trace": (response.get("extra") or {}).get("child_trace"),
             # A withheld response's raw data, for the host only (never sent
             # to the model, nor to the dashboard).
             "withheld_response": response.get("withheld_data"),
-            **(response.get("extra") or {}),  # host notes, e.g. retried_with_user_text
+            **{k: v for k, v in (response.get("extra") or {}).items() if k != "child_trace"},  # host notes
             "started_ms": c.offset_ms(started) if started is not None else None,
             "duration_ms": duration,
         })
@@ -324,6 +330,10 @@ def build_trace(
         "session_id": collector.session_id,
         "bundle_revision": collector.bundle_revision,
         "app": collector.app,
+        "caller_app": collector.caller_app,
+        "parent_trace_id": collector.parent_trace_id,
+        "chain": list(collector.chain),
+        "child_traces": [c["child_trace"] for c in collector.tool_calls if c.get("child_trace")],
         "kind": collector.kind,
         "target": collector.target,
         "flow_entry": flow_entry,
@@ -458,6 +468,8 @@ def dashboard_record(trace: dict[str, Any], *, include_content: bool = False) ->
         "kind": trace.get("kind", "agent"), "agent": agent,
         "flow": trace.get("target") if is_flow else None,
         "session_id": trace.get("session_id"), "bundle_revision": trace.get("bundle_revision"),
+        "caller_app": trace.get("caller_app"), "parent_trace_id": trace.get("parent_trace_id"),
+        "chain": trace.get("chain") or [], "child_traces": trace.get("child_traces") or [],
         "prompt_version": first.get("prompt_version"),
         "started_at": trace["started_at"], "ended_at": trace["ended_at"],
         "duration_ms": totals.get("latency_ms"), "status": _status(trace),
