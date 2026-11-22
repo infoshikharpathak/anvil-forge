@@ -51,6 +51,7 @@ class AnvilToolSource:
         observer: ToolCallObserver | None = None,
         anvil_for: Callable[[RunContext], Anvil | None] | None = None,
         prepare: ToolCallPreparer | None = None,
+        before_call: Any = None,
         after_call: Any = None,
         message_for: Callable[[RunContext], str | None] | None = None,
     ) -> None:
@@ -59,6 +60,9 @@ class AnvilToolSource:
         model sees it; ``call_again(params, note)`` runs the same tool again
         through Anvil (recorded as its own call, with *note* in the trace)."""
         self._after = after_call
+        # async (ctx, name, params) -> block message | None: a host gate that
+        # can refuse a call before it runs (violation unrequested_action).
+        self._before = before_call
         self._message_for = message_for
         self._anvil = anvil
         self._app = app
@@ -89,6 +93,9 @@ class AnvilToolSource:
     async def call(self, name: str, args: dict[str, Any], ctx: RunContext) -> str:
         tool_id = resolve(name, self._app)
         anvil = (self._anvil_for(ctx) if self._anvil_for else None) or self._anvil
+        blocked = await self._gate(ctx, name, tool_id, args)
+        if blocked is not None:
+            return json.dumps(blocked)
         payload = await self._execute(anvil, ctx, name, tool_id, args)
         if self._after is not None:
             # The host may replace the result before the model sees it (e.g.
@@ -107,6 +114,30 @@ class AnvilToolSource:
                 log.exception("[anvil_tool_source] after_tool_call hook failed for %s", tool_id)
         # A JSON string reads the same on every backend (some str() dicts).
         return json.dumps(payload)
+
+    async def _gate(self, ctx: RunContext, name: str, tool_id: str, args: dict[str, Any]) -> dict | None:
+        """The host's pre-call gate. A refusal never reaches Anvil or the
+        upstream; it is observed (traced) like any blocked call."""
+        if self._before is None:
+            return None
+        started = time.perf_counter()
+        try:
+            message = await self._before(ctx, name, dict(args))
+        except Exception:
+            log.exception("[anvil_tool_source] before_call hook failed for %s", tool_id)
+            return None
+        if message is None:
+            return None
+        payload = {"success": False, "data": None, "tool_executed": False, "correction": {
+            "violation": "unrequested_action", "message": message, "required_actions": [], "call_history": []}}
+        if self._observer is not None:
+            try:
+                timing = {"started": started, "duration_ms": round((time.perf_counter() - started) * 1000, 1)}
+                self._observer(ctx, name, tool_id, dict(args), {**payload, "extra": {"requested_check": "mismatched"}},
+                               timing)
+            except Exception:
+                log.exception("[anvil_tool_source] observer failed")
+        return payload
 
     async def _execute(self, anvil: Anvil, ctx: RunContext, name: str, tool_id: str, args: dict[str, Any],
                        extra: dict[str, Any] | None = None) -> dict:

@@ -130,6 +130,17 @@ class FlowResult:
 NOT_AN_ACTION = object()
 
 
+@dataclass(frozen=True)
+class NotRequested:
+    """An is_requested_action answer meaning False, with the message the
+    model gets when a call is blocked before it runs (phase "before")."""
+
+    message: str
+
+    def __bool__(self) -> bool:
+        return False
+
+
 @dataclass
 class _Session:
     """One conversation: an Anvil session plus the agents that remember it."""
@@ -181,7 +192,8 @@ class Platform:
         # classifier labels a reply unrequested_action; True = don't flag it.
         self._is_requested = is_requested_action
         self._after_tool_call = after_tool_call  # see AnvilToolSource(after_call=...)
-        self._output_checks: dict[str, dict[str, Any]] = {}  # run_id -> what the output check decided
+        self._output_checks: dict[str, dict[str, Any]] = {}
+        self._run_sessions: dict[str, _Session | None] = {}  # run_id -> its session, for the pre-call gate  # run_id -> what the output check decided
         self._run_anvils: dict[str, Anvil] = {}
         self._sessions: dict[str, _Session] = {}
         self._exporter = TraceExporter(sinks if sinks is not None else [LocalSink()])
@@ -216,6 +228,7 @@ class Platform:
             observer=self._collectors.on_tool_call,
             anvil_for=lambda ctx: self._run_anvils.get(ctx.run_id),
             prepare=self._prepare,
+            before_call=self._gate_tool_call if self._is_requested is not None else None,
             after_call=self._after_tool_call,
             message_for=lambda ctx: getattr(self._collectors.for_ctx(ctx), "message", None),
         )
@@ -705,6 +718,7 @@ class Platform:
         tracer = RunTracer(task=message, routing_tier="platform", app_id=self.app, trace_id=trace_id)
         # A session's runs share its Anvil instance; otherwise one per run.
         self._run_anvils[tracer.run_id] = sess.anvil if sess else self._new_anvil(session_id=tracer.run_id)
+        self._run_sessions[tracer.run_id] = sess
         collector = RunCollector(
             trace_id=tracer.trace_id, run_id=tracer.run_id, app=self.app,
             kind=kind, target=target, message=message, session_id=sess.id if sess else None,
@@ -715,6 +729,29 @@ class Platform:
         # The config this run started on: a refresh mid-run mustn't change how
         # the run executes, or how its trace describes it.
         return factory, tracer, collector, self.config
+
+    async def _gate_tool_call(self, ctx: RunContext, name: str, params: dict[str, Any]) -> str | None:
+        """Before a tool runs: ask is_requested_action (phase "before"). For
+        actions with no OTP behind them (an address change, a cancellation)
+        the app answers here; reads and OTP-protected actions answer
+        NOT_AN_ACTION. Returns the block message, or None to run the call."""
+        sess = self._run_sessions.get(ctx.run_id)
+        collector = self._collectors.for_ctx(ctx)
+        turn = {"user": getattr(collector, "message", None), "reply": None,
+                "tool_calls": list(getattr(collector, "tool_calls", []) or [])}
+        action = {"tool": name, "params": dict(params), "phase": "before"}
+        try:
+            result = self._is_requested(list(sess.turns) if sess else [], turn, action)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception:
+            log.exception("[platform] is_requested_action failed before %s", name)
+            result = None
+        if result is NOT_AN_ACTION or result is True:
+            return None
+        if isinstance(result, NotRequested):
+            return result.message
+        return f"The user hasn't asked for this {name} call. Ask the user to confirm first."
 
     async def _requested_checks(self, sess: _Session | None, turn: dict, calls: list[dict]) -> list[str | None]:
         """Per tool call: matched / mismatched / unknown (the app's
@@ -734,7 +771,8 @@ class Platform:
                 log.exception("[platform] is_requested_action failed")
                 result = None
             out.append(None if result is NOT_AN_ACTION else
-                       "matched" if result is True else "mismatched" if result is False else "unknown")
+                       "matched" if result is True else
+                       "mismatched" if result is False or isinstance(result, NotRequested) else "unknown")
         return out
 
     async def _flag_blocked_turn(self, agent_id: str, calls: list[dict[str, Any]],
@@ -754,6 +792,7 @@ class Platform:
         """Persist the Agent Forge row, merge the trace and export it. Never raises."""
         _, tracer, collector, config = run
         anvil = self._run_anvils.pop(tracer.run_id, None)
+        self._run_sessions.pop(tracer.run_id, None)
         self._output_checks.pop(tracer.run_id, None)  # e.g. a flow agent's, or a failed run's
         self._collectors.end(tracer.run_id)
         trace: dict[str, Any] = {}

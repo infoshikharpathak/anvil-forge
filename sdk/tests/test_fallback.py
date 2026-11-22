@@ -290,6 +290,8 @@ def requested(answer):
     seen = []
 
     def hook(history, turn, action):
+        if action.get("phase") == "before":  # OTP-protected: checked after, not gated before
+            return NOT_AN_ACTION
         seen.append((len(history), turn["user"], action["tool"]))
         return answer if action["tool"] == "initiate_transfer" else NOT_AN_ACTION
     hook.seen = seen
@@ -316,6 +318,8 @@ async def test_mismatched_or_unknown_is_flagged(monkeypatch, answer, result):
 
 async def test_a_failing_hook_counts_as_unknown(monkeypatch):
     def broken(history, turn, action):
+        if action.get("phase") == "before":
+            return NOT_AN_ACTION
         raise RuntimeError("boom")
 
     reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, UNASKED], flag=Flag(), label_words=LABELS,
@@ -363,3 +367,51 @@ async def test_after_tool_call_can_retry_and_replace_the_result(monkeypatch):
     recorded = [c for c in reply.trace["tool_calls"] if c["tool"] == "get_accounts"]
     assert len(recorded) == 2 and recorded[1].get("retried_with_user_text") is True
     assert "retried_with_user_text" not in recorded[0]
+
+
+# ── pre-call gate: actions with no OTP behind them ─────────────────────────
+
+from bastion import NotRequested  # noqa: E402
+
+
+def gate(answer):
+    def hook(history, turn, action):
+        if action.get("phase") == "before" and action["tool"] == "initiate_transfer":
+            return answer
+        return NOT_AN_ACTION
+    return hook
+
+
+async def test_gate_blocks_before_the_call_runs(monkeypatch):
+    bank = Bank()
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Couldn't do it."}], bank,
+                      is_requested_action=gate(NotRequested("Ask the user to confirm first.")))
+    (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
+    assert call["violation"] == "unrequested_action" and call["tool_executed"] is False
+    assert call["correction"] == "Ask the user to confirm first." and call["requested_check"] == "mismatched"
+    assert not [r for r in bank.requests if r.url.path == "/transfers"]
+
+
+async def test_gate_allows_a_requested_call(monkeypatch):
+    bank = Bank()
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Done."}], bank, is_requested_action=gate(True))
+    (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
+    assert call["violation"] is None and call["tool_executed"] is True
+
+
+@pytest.mark.parametrize("answer", [False, None])
+async def test_gate_blocks_on_false_or_unknown_with_a_default_message(monkeypatch, answer):
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Couldn't."}], is_requested_action=gate(answer))
+    (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
+    assert call["violation"] == "unrequested_action" and "Ask the user to confirm first" in call["correction"]
+
+
+async def test_gate_fails_closed_when_the_hook_raises(monkeypatch):
+    def broken(history, turn, action):
+        if action.get("phase") == "before" and action["tool"] == "initiate_transfer":
+            raise RuntimeError("boom")
+        return NOT_AN_ACTION
+
+    reply = await run(monkeypatch, [ACCOUNTS, TRANSFER, {"text": "Couldn't."}], is_requested_action=broken)
+    (call,) = [c for c in reply.trace["tool_calls"] if c["tool"] == "initiate_transfer"]
+    assert call["violation"] == "unrequested_action"
