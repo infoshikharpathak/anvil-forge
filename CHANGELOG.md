@@ -6,10 +6,13 @@ First release on PyPI, under the Apache-2.0 license, as one family:
 
 | Package | PyPI name | Import |
 |---|---|---|
-| SDK | `garrison` | `garrison` |
+| SDK | `garrison-sdk` | `garrison` |
 | Control plane | `garrison-hq` | `garrison_hq` |
 | Governance (Anvil) | `garrison-anvil` | `anvil` |
 | Orchestration (Agent Forge) | `garrison-forge` | `agent_forge` |
+
+The SDK is `garrison-sdk` because the `garrison` name on PyPI belongs to
+another project; its import name is still `garrison`.
 
 ### Renamed from Bastion
 
@@ -20,7 +23,7 @@ the old URL).
 
 | Before | Now |
 |---|---|
-| `pip install bastion`, `import bastion` | `pip install garrison`, `import garrison` |
+| `pip install bastion`, `import bastion` | `pip install garrison-sdk`, `import garrison` |
 | `bastion-server`, `import bastion_server`, CLI `bastion-server` | `garrison-hq`, `import garrison_hq`, CLI `garrison-hq` |
 | `BASTION_URL`, `BASTION_KEY`, `BASTION_*` server settings | `GARRISON_URL`, `GARRISON_KEY`, `GARRISON_*` |
 | `X-Bastion` (CSRF), `X-Bastion-Call-Chain`, `X-Bastion-Trace-Id` | `X-Garrison`, `X-Garrison-Call-Chain`, `X-Garrison-Trace-Id` |
@@ -42,7 +45,7 @@ upgrades in place.
 
 ### What's in 0.1.0
 
-- **SDK (`garrison`):** apps, tools, agents and flows from one YAML config,
+- **SDK (`garrison-sdk`, import `garrison`):** apps, tools, agents and flows from one YAML config,
   compiled into the Anvil policy; governed tools and agents; sessions
   across turns; cross-app grants with the consumer's own credentials;
   agent-to-agent calls (`type: remote_agent`, `garrison.a2a.CallerKeys`)
@@ -56,5 +59,5 @@ upgrades in place.
   (per app, per trace, per session and across apps), and the CLI (`serve`,
   `migrate`, `create-user`, `cleanup-traces`).
 - **Dependencies:** `garrison-anvil` and `garrison-forge[langgraph]` (flows run on
-  its graph runner) as normal version ranges (`>=0.1.0,<0.2`); Anthropic models via `pip install "garrison[anthropic]"`;
+  its graph runner) as normal version ranges (`>=0.1.0,<0.2`); Anthropic models via `pip install "garrison-sdk[anthropic]"`;
   Postgres via `pip install "garrison-hq[postgres]"`.

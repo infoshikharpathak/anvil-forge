@@ -1,6 +1,7 @@
 # garrison-hq
 
-The [Garrison](https://github.com/infoshikharpathak/garrison) control plane:
+The [Garrison](https://github.com/infoshikharpathak/garrison) control plane
+(install `garrison-hq`, import `garrison_hq`):
 
 - accounts, with database sessions, CSRF protection and a login rate limit;
 - apps, tools, agents with immutable prompt versions, flows and grants, each

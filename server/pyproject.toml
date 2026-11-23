@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
   # The SDK; its config compiler validates every write.
-  "garrison>=0.1.0,<0.2",
+  "garrison-sdk>=0.1.0,<0.2",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
   "sqlalchemy>=2.0,<3",

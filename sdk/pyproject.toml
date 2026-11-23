@@ -1,5 +1,5 @@
 [project]
-name = "garrison"
+name = "garrison-sdk"
 version = "0.1.0"
 description = "Governed, traced AI agents: one platform SDK on Anvil (tool governance) and Agent Forge (agents). Register apps, tools, agents and flows once; every run is checked, executed and traced."
 readme = "README.md"
@@ -33,7 +33,7 @@ dependencies = [
 [project.optional-dependencies]
 # Agents with backend: anthropic.
 anthropic = ["garrison-forge[anthropic,langgraph]>=0.1.0,<0.2"]
-dev = ["garrison[anthropic]", "pytest>=8", "pytest-asyncio>=0.23"]
+dev = ["garrison-sdk[anthropic]", "pytest>=8", "pytest-asyncio>=0.23"]
 
 [project.urls]
 Homepage = "https://github.com/infoshikharpathak/garrison"

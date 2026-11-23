@@ -1,4 +1,4 @@
-# garrison
+# garrison-sdk
 
 Governed, traced AI agents on [Anvil](https://github.com/infoshikharpathak/anvil)
 (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge)
@@ -11,11 +11,12 @@ dashboards) is [`garrison-hq`](https://pypi.org/project/garrison-hq/).
 ## Install
 
 ```bash
-pip install garrison                 # OpenAI-backed agents
-pip install "garrison[anthropic]"    # + agents on Anthropic models
+pip install garrison-sdk                 # OpenAI-backed agents
+pip install "garrison-sdk[anthropic]"    # + agents on Anthropic models
 ```
 
-Python 3.11 or newer. It brings `garrison-anvil` (imported as `anvil`) and
+**Install `garrison-sdk`, import `garrison`:** the install name and the
+import name differ. Python 3.11 or newer. It brings `garrison-anvil` (imported as `anvil`) and
 `garrison-forge` (imported as `agent_forge`); for those two the install and
 import names differ. Garrison was called Bastion before its first release;
 see the [changelog](https://github.com/infoshikharpathak/garrison/blob/main/CHANGELOG.md)

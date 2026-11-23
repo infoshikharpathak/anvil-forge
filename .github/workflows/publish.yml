@@ -1,6 +1,6 @@
 name: Publish
 
-# On a v* tag: build garrison (sdk/) and garrison-hq (server/), test the built
+# On a v* tag: build garrison-sdk (sdk/) and garrison-hq (server/), test the built
 # wheels, publish both to TestPyPI, then to PyPI once someone approves the
 # "pypi" environment's deployment. Trusted Publishing (OIDC): no API tokens
 # are stored anywhere. Each index needs a (pending) publisher for both
@@ -58,7 +58,7 @@ jobs:
           name: dist
           path: dist/
       - name: Install the built wheels
-        run: pip install "$(ls dist/garrison-*.whl)[dev]" "$(ls dist/garrison_hq-*.whl)[dev]"
+        run: pip install "$(ls dist/garrison_sdk-*.whl)[dev]" "$(ls dist/garrison_hq-*.whl)[dev]"
       - name: Test against the installed wheels
         env:
           OPENAI_API_KEY: dummy-key-for-ci
@@ -73,7 +73,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: testpypi
-      url: https://test.pypi.org/p/garrison
+      url: https://test.pypi.org/p/garrison-sdk
     permissions:
       id-token: write
     steps:
@@ -92,7 +92,7 @@ jobs:
     # the job waits for that manual approval.
     environment:
       name: pypi
-      url: https://pypi.org/p/garrison
+      url: https://pypi.org/p/garrison-sdk
     permissions:
       id-token: write
     steps:

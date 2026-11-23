@@ -9,13 +9,15 @@ Status: **4a (SDK), 4b (control plane) and 4c (dashboard and trace viewer) are b
 ## Install
 
 ```bash
-pip install garrison                   # the SDK: import garrison
-pip install "garrison[anthropic]"      # + agents on Anthropic models
+pip install garrison-sdk               # the SDK: import garrison
+pip install "garrison-sdk[anthropic]"  # + agents on Anthropic models
 pip install garrison-hq                # the control plane: the garrison-hq CLI
 pip install "garrison-hq[postgres]"    # + the Postgres driver
 ```
 
-Python 3.11 or newer. `garrison` brings `garrison-anvil` (Anvil, imported as
+Install names differ from import names: `garrison-sdk` is imported as
+`garrison` and `garrison-hq` as `garrison_hq`. Python 3.11 or newer.
+`garrison-sdk` brings `garrison-anvil` (Anvil, imported as
 `anvil`) and `garrison-forge` (Agent Forge, imported as `agent_forge`) from
 PyPI; the install and import names differ for those two. Until those two are published, install them from GitHub first:
 `pip install -r requirements-unreleased.txt`.
@@ -25,7 +27,7 @@ PyPI; the install and import names differ for those two. Until those two are pub
 Everything is in [`examples/quickstart/`](examples/quickstart/), including a stand-in bank API, so it runs on a clean machine:
 
 ```bash
-pip install -r requirements-unreleased.txt -e sdk   # from a clone; or: pip install garrison
+pip install -r requirements-unreleased.txt -e sdk   # from a clone; or: pip install garrison-sdk
 export OPENAI_API_KEY=...         # agents and the injection classifier use the same key
 cd examples/quickstart
 python fake_bank.py &             # start this first: a fake bank API on localhost:8765
