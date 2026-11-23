@@ -1,5 +1,7 @@
 # garrison-sdk
 
+[![PyPI](https://img.shields.io/pypi/v/garrison-sdk.svg)](https://pypi.org/project/garrison-sdk/) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/infoshikharpathak/garrison/blob/main/LICENSE)
+
 Governed, traced AI agents on [Anvil](https://github.com/infoshikharpathak/anvil)
 (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge)
 (agents). Declare apps, tools, agents and flows once; every run is checked by
