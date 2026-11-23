@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -86,7 +86,14 @@ class AppPatch(Strict):
 
 
 class ToolSpec(Strict):
-    """Anvil tool fields (no name; it's in the URL or body)."""
+    """Anvil tool fields (no name; it's in the URL or body).
+
+    ``type: remote_agent`` is another app's agent called as a tool (the SDK's
+    garrison.a2a): it POSTs {message, session_id} to ``endpoint`` (a full
+    URL, e.g. an agent service on its own host) or to ``path`` (default
+    /agent/chat) on the app's base_url. The SDK sets its method and
+    parameters, so those can't be given here."""
+    type: Literal["remote_agent"] | None = None
     path: str | None = None
     endpoint: str | None = None
     method: Literal["GET", "POST", "PUT", "PATCH", "DELETE"] = "POST"
@@ -97,6 +104,17 @@ class ToolSpec(Strict):
     parameters: dict[str, Any] | None = None
     response_schema: dict[str, Any] | None = None
     redact_fields: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _remote_agent_fields(self):
+        if self.type == "remote_agent":
+            fixed = sorted(f for f in ("method", "parameters", "response_schema") if f in self.model_fields_set)
+            if fixed:
+                raise ValueError(f"a remote_agent tool can't set {', '.join(fixed)}: the SDK sets them "
+                                 "(POST with {message, session_id})")
+        if self.path is not None and self.endpoint is not None:
+            raise ValueError("set either path or endpoint, not both")
+        return self
 
 
 class ToolIn(ToolSpec):

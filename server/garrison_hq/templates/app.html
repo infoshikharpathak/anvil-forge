@@ -41,7 +41,7 @@
 <div class="panel scroll">
   <table><thead><tr><th>Tool</th><th>Call</th><th>Trust</th><th>Redacts</th><th>Description</th></tr></thead><tbody>
   {% for t in tools %}
-    <tr><td class="mono">{{ t.name }}</td><td class="mono">{{ t.method or 'POST' }} {{ t.path or t.endpoint }}</td>
+    <tr><td class="mono">{{ t.name }}</td><td class="mono">{% if t.type == 'remote_agent' %}remote agent · {{ t.endpoint or (t.path or '/agent/chat') }}{% else %}{{ t.method or 'POST' }} {{ t.path or t.endpoint }}{% endif %}</td>
       <td>{{ t.trust or 'untrusted' }}</td><td class="mono">{{ (t.redact_fields or [])|join(', ') or '—' }}</td><td>{{ t.description }}</td></tr>
   {% else %}<tr><td colspan="5" class="sub">No tools.</td></tr>{% endfor %}
   </tbody></table>
