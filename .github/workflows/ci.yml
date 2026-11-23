@@ -24,7 +24,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           # Caches pip's downloads and the wheels it builds from the
-          # anvil-ai / agent-forge git pins. The key changes only when the
+          # garrison-anvil / garrison-forge git pins. The key changes only when the
           # pins or the dependency ranges change.
           cache: pip
           cache-dependency-path: |
@@ -32,7 +32,7 @@ jobs:
             sdk/pyproject.toml
 
       - name: Install SDK + dev dependencies
-        # requirements-unreleased.txt: anvil-ai and agent-forge from GitHub
+        # requirements-unreleased.txt: garrison-anvil and garrison-forge from GitHub
         # until they're on PyPI.
         run: pip install -r requirements-unreleased.txt -e "sdk[dev]"
 

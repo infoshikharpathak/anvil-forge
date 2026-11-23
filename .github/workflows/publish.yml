@@ -7,8 +7,8 @@ name: Publish
 # projects with this repository, this workflow file and the environment
 # named below.
 #
-# Publish order across repos: anvil-ai, agent-forge, then this tag. The test
-# job installs anvil-ai and agent-forge from PyPI.
+# Publish order across repos: garrison-anvil, garrison-forge, then this tag. The test
+# job installs garrison-anvil and garrison-forge from PyPI.
 
 on:
   push:

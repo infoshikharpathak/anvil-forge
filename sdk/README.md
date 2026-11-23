@@ -15,7 +15,9 @@ pip install garrison                 # OpenAI-backed agents
 pip install "garrison[anthropic]"    # + agents on Anthropic models
 ```
 
-Python 3.11 or newer. Garrison was called Bastion before its first release;
+Python 3.11 or newer. It brings `garrison-anvil` (imported as `anvil`) and
+`garrison-forge` (imported as `agent_forge`); for those two the install and
+import names differ. Garrison was called Bastion before its first release;
 see the [changelog](https://github.com/infoshikharpathak/garrison/blob/main/CHANGELOG.md)
 for what changed.
 
@@ -68,3 +70,7 @@ platform = Platform.from_service(os.environ["GARRISON_URL"], api_key=os.environ[
 Sessions, flows, grants and credentials, agent-to-agent calls
 (`garrison.a2a`), the dashboard sink and the config reference are in the
 [full README](https://github.com/infoshikharpathak/garrison#readme).
+
+## License
+
+Apache License 2.0. See [LICENSE](https://github.com/infoshikharpathak/garrison/blob/main/LICENSE).

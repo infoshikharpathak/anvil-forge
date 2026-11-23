@@ -3,7 +3,8 @@ name = "garrison"
 version = "0.1.0"
 description = "Governed, traced AI agents: one platform SDK on Anvil (tool governance) and Agent Forge (agents). Register apps, tools, agents and flows once; every run is checked, executed and traced."
 readme = "README.md"
-# license: pending the owner's choice (the repo has no LICENSE yet)
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Shikhar Pathak" }]
 requires-python = ">=3.11"
 keywords = ["agents", "llm", "governance", "guardrails", "tracing", "openai", "anthropic"]
@@ -21,9 +22,9 @@ classifiers = [
   "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-  "anvil-ai>=0.1.0,<0.2",
+  "garrison-anvil>=0.1.0,<0.2",
   # [langgraph]: run_flow executes flows on Agent Forge's graph runner.
-  "agent-forge[langgraph]>=0.1.0,<0.2",
+  "garrison-forge[langgraph]>=0.1.0,<0.2",
   "pydantic>=2.0,<3",
   "pyyaml>=6.0",
   "httpx>=0.27",
@@ -31,7 +32,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Agents with backend: anthropic.
-anthropic = ["agent-forge[anthropic,langgraph]>=0.1.0,<0.2"]
+anthropic = ["garrison-forge[anthropic,langgraph]>=0.1.0,<0.2"]
 dev = ["garrison[anthropic]", "pytest>=8", "pytest-asyncio>=0.23"]
 
 [project.urls]

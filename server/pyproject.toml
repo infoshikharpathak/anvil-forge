@@ -3,7 +3,8 @@ name = "garrison-hq"
 version = "0.1.0"
 description = "The Garrison control plane: accounts, apps, tools, agents with versioned prompts, flows, grants, app keys, the bundle API for the SDK's remote mode, and trace dashboards."
 readme = "README.md"
-# license: pending the owner's choice (the repo has no LICENSE yet)
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 authors = [{ name = "Shikhar Pathak" }]
 requires-python = ">=3.11"
 keywords = ["agents", "llm", "governance", "control-plane", "dashboard", "tracing"]

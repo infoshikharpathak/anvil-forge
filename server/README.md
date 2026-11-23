@@ -34,3 +34,7 @@ Python 3.11 or newer.
 pip install -e sdk -e "server[dev]"     # from the repo root
 pytest -q server                        # add TEST_POSTGRES_URL=... to also run on Postgres
 ```
+
+## License
+
+Apache License 2.0. See [LICENSE](https://github.com/infoshikharpathak/garrison/blob/main/LICENSE).

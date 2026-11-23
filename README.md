@@ -1,5 +1,7 @@
 # Garrison
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
 Status: **4a (SDK), 4b (control plane) and 4c (dashboard and trace viewer) are built.** See [docs/SPEC.md](docs/SPEC.md). Upgrading from the project's earlier name: see [CHANGELOG.md](CHANGELOG.md).
@@ -13,8 +15,9 @@ pip install garrison-hq                # the control plane: the garrison-hq CLI
 pip install "garrison-hq[postgres]"    # + the Postgres driver
 ```
 
-Python 3.11 or newer. `garrison` brings `anvil-ai` and `agent-forge` from
-PyPI. Until those two are published, install them from GitHub first:
+Python 3.11 or newer. `garrison` brings `garrison-anvil` (Anvil, imported as
+`anvil`) and `garrison-forge` (Agent Forge, imported as `agent_forge`) from
+PyPI; the install and import names differ for those two. Until those two are published, install them from GitHub first:
 `pip install -r requirements-unreleased.txt`.
 
 ## Quickstart
@@ -222,3 +225,7 @@ from the control plane) are future work.
 python3.12 -m venv .venv && .venv/bin/pip install -r requirements-unreleased.txt -e "sdk[dev]" -e "server[dev,postgres]"
 .venv/bin/pytest -q sdk        # stubbed LLM + upstream; the live OpenAI test runs only if OPENAI_API_KEY is real
 ```
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

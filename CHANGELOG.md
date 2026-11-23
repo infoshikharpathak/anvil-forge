@@ -2,8 +2,14 @@
 
 ## 0.1.0 (unreleased)
 
-First release on PyPI: the SDK as `garrison` and the control plane as
-`garrison-hq`.
+First release on PyPI, under the Apache-2.0 license, as one family:
+
+| Package | PyPI name | Import |
+|---|---|---|
+| SDK | `garrison` | `garrison` |
+| Control plane | `garrison-hq` | `garrison_hq` |
+| Governance (Anvil) | `garrison-anvil` | `anvil` |
+| Orchestration (Agent Forge) | `garrison-forge` | `agent_forge` |
 
 ### Renamed from Bastion
 
@@ -49,6 +55,6 @@ upgrades in place.
   bundle API, YAML import/export, an audit log, trace ingestion, dashboards
   (per app, per trace, per session and across apps), and the CLI (`serve`,
   `migrate`, `create-user`, `cleanup-traces`).
-- **Dependencies:** `anvil-ai` and `agent-forge[langgraph]` (flows run on
+- **Dependencies:** `garrison-anvil` and `garrison-forge[langgraph]` (flows run on
   its graph runner) as normal version ranges (`>=0.1.0,<0.2`); Anthropic models via `pip install "garrison[anthropic]"`;
   Postgres via `pip install "garrison-hq[postgres]"`.
