@@ -127,3 +127,23 @@ def test_unknown_or_missing_key_is_no_caller(headers):
 def test_parse_chain_drops_malformed_hops():
     assert parse_chain("chathub.assistant, bad hop,<x>.y, a.b") == ["chathub.assistant", "a.b"]
     assert len(parse_chain(",".join(["a.b"] * 50))) == 10
+
+
+def test_remote_agent_with_a_full_endpoint_compiles():
+    """An agent service on its own host: endpoint replaces the default path
+    (Anvil rejects a tool with both)."""
+    from garrison.config import load_config
+
+    cfg = {
+        "apps": {
+            "hub": {"credentials": {"shop": "env:HUB_SHOP_KEY"}},
+            "shop": {"base_url": "http://shop.test:8000", "auth": {"header": "Authorization", "prefix": "Bearer "},
+                     "tools": {"ask_shop": {"type": "remote_agent", "endpoint": "http://shop-agent.test:8100/agent/chat"}}},
+        },
+        "grants": [{"tool": "shop.ask_shop", "to_apps": ["hub"]}],
+        "agents": {"hub.assistant": {"instructions": "x", "prompt_version": "v1", "tools": ["shop.ask_shop"]}},
+    }
+    tool = load_config(cfg).anvil_for("hub").tools["shop.ask_shop"]
+    assert tool.endpoint == "http://shop-agent.test:8100/agent/chat" and tool.path is None
+    cfg["apps"]["shop"]["tools"]["ask_shop"] = {"type": "remote_agent"}
+    assert load_config(cfg).anvil_for("hub").tools["shop.ask_shop"].endpoint == "http://shop.test:8000/agent/chat"

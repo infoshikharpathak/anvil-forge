@@ -232,11 +232,13 @@ REMOTE_AGENT_PARAMETERS = {
 
 def _remote_agent_tool(spec: dict[str, Any]) -> dict[str, Any]:
     """``type: remote_agent``: another app's agent, called over HTTP as a tool.
-    POST {base_url}{path or /agent/chat} with {message, session_id}; the model
+    POST {base_url}{path or /agent/chat}, or to its full ``endpoint`` (an agent
+    service on another host), with {message, session_id}; the model
     only writes the message. Untrusted by default, so the other agent's reply
     is injection-scanned like any tool response."""
     spec = {k: v for k, v in spec.items() if k != "type"}
-    return {"path": "/agent/chat", "trust": "untrusted", "timeout": 90, **spec,
+    where = {} if spec.get("endpoint") else {"path": "/agent/chat"}  # a full endpoint replaces the default path
+    return {**where, "trust": "untrusted", "timeout": 90, **spec,
             "method": "POST", "parameters": REMOTE_AGENT_PARAMETERS}
 
 
