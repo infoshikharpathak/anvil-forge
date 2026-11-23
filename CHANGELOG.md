@@ -1,6 +1,13 @@
 # Changelog
 
-## 0.1.0 (unreleased)
+## Unreleased
+
+- README: the control-plane quickstart installs plain `garrison-hq` (SQLite,
+  the default, needs no database server); Postgres is a separate, optional
+  step with `garrison-hq[postgres]` and `DATABASE_URL`. Docs only; no
+  package release needed.
+
+## 0.1.0 (2026-11-23)
 
 First release on PyPI, under the Apache-2.0 license, as one family:
 

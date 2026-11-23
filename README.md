@@ -107,10 +107,19 @@ platform = Platform.from_service("https://garrison.example.com", api_key=os.envi
 `garrison-hq` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
 
 ```bash
-pip install "garrison-hq[postgres]"              # or from a clone: pip install -e sdk -e "server[postgres]"
-export DATABASE_URL=sqlite:///./garrison_hq.db   # default; or postgresql+psycopg://user:pass@host/db
+pip install garrison-hq                           # or from a clone: pip install -e sdk -e server
 garrison-hq create-user --email you@example.com  # the first account (prompts for a password)
 garrison-hq serve --port 8200                     # migrates, then serves http://localhost:8200/ui
+```
+
+No database server is needed: by default the data lives in a SQLite file,
+`./garrison_hq.db` in the folder you run these commands from. For Postgres,
+install the driver and point `DATABASE_URL` at it before the commands
+above:
+
+```bash
+pip install "garrison-hq[postgres]"
+export DATABASE_URL=postgresql+psycopg://user:pass@host/db
 ```
 
 To connect an app:
