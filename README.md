@@ -2,14 +2,27 @@
 
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
-Status: **4a (SDK), 4b (control plane) and 4c (dashboard and trace viewer) are built.** See [docs/SPEC.md](docs/SPEC.md).
+Status: **4a (SDK), 4b (control plane) and 4c (dashboard and trace viewer) are built.** See [docs/SPEC.md](docs/SPEC.md). Upgrading from the project's earlier name: see [CHANGELOG.md](CHANGELOG.md).
+
+## Install
+
+```bash
+pip install garrison                   # the SDK: import garrison
+pip install "garrison[anthropic]"      # + agents on Anthropic models
+pip install garrison-hq                # the control plane: the garrison-hq CLI
+pip install "garrison-hq[postgres]"    # + the Postgres driver
+```
+
+Python 3.11 or newer. `garrison` brings `anvil-ai` and `agent-forge` from
+PyPI. Until those two are published, install them from GitHub first:
+`pip install -r requirements-unreleased.txt`.
 
 ## Quickstart
 
 Everything is in [`examples/quickstart/`](examples/quickstart/), including a stand-in bank API, so it runs on a clean machine:
 
 ```bash
-pip install -e sdk                # pulls anvil-ai and agent-forge from GitHub (pinned commits)
+pip install -r requirements-unreleased.txt -e sdk   # from a clone; or: pip install garrison
 export OPENAI_API_KEY=...         # agents and the injection classifier use the same key
 cd examples/quickstart
 python fake_bank.py &             # start this first: a fake bank API on localhost:8765
@@ -90,7 +103,7 @@ platform = Platform.from_service("https://garrison.example.com", api_key=os.envi
 `garrison-hq` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
 
 ```bash
-pip install -e sdk -e "server[postgres]"
+pip install "garrison-hq[postgres]"              # or from a clone: pip install -e sdk -e "server[postgres]"
 export DATABASE_URL=sqlite:///./garrison_hq.db   # default; or postgresql+psycopg://user:pass@host/db
 garrison-hq create-user --email you@example.com  # the first account (prompts for a password)
 garrison-hq serve --port 8200                     # migrates, then serves http://localhost:8200/ui
@@ -206,6 +219,6 @@ from the control plane) are future work.
 ## Development
 
 ```bash
-python3.12 -m venv .venv && .venv/bin/pip install -e "sdk[dev]"
+python3.12 -m venv .venv && .venv/bin/pip install -r requirements-unreleased.txt -e "sdk[dev]" -e "server[dev,postgres]"
 .venv/bin/pytest -q sdk        # stubbed LLM + upstream; the live OpenAI test runs only if OPENAI_API_KEY is real
 ```

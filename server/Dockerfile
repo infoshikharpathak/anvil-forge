@@ -4,7 +4,7 @@
 # Postgres instead of the bundled SQLite file: -e DATABASE_URL=postgresql+psycopg://user:pass@host/db
 FROM python:3.12-slim
 
-# git: the SDK depends on anvil-ai and agent-forge as git dependencies.
+# git: for the anvil-ai and agent-forge pins in requirements-unreleased.txt.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/* \
@@ -12,9 +12,12 @@ RUN apt-get update \
     && mkdir /data && chown garrison /data
 
 WORKDIR /srv
+COPY requirements-unreleased.txt ./
 COPY sdk/ sdk/
 COPY server/ server/
-RUN pip install --no-cache-dir ./sdk "./server[postgres]"
+# requirements-unreleased.txt: anvil-ai and agent-forge from GitHub until
+# they're on PyPI (drop it, and git above, once they are).
+RUN pip install --no-cache-dir -r requirements-unreleased.txt ./sdk "./server[postgres]"
 
 USER garrison
 ENV DATABASE_URL=sqlite:////data/garrison_hq.db \

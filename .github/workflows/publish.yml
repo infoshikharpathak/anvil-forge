@@ -1,0 +1,103 @@
+name: Publish
+
+# On a v* tag: build garrison (sdk/) and garrison-hq (server/), test the built
+# wheels, publish both to TestPyPI, then to PyPI once someone approves the
+# "pypi" environment's deployment. Trusted Publishing (OIDC): no API tokens
+# are stored anywhere. Each index needs a (pending) publisher for both
+# projects with this repository, this workflow file and the environment
+# named below.
+#
+# Publish order across repos: anvil-ai, agent-forge, then this tag. The test
+# job installs anvil-ai and agent-forge from PyPI.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check the tag matches both versions
+        run: |
+          for project in sdk server; do
+            version=$(python -c "import tomllib; print(tomllib.load(open('$project/pyproject.toml', 'rb'))['project']['version'])")
+            test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != $project version $version"; exit 1; }
+          done
+      - name: Build
+        run: |
+          pip install build twine
+          python -m build sdk --outdir dist
+          python -m build server --outdir dist
+          twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  test:
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Install the built wheels
+        run: pip install "$(ls dist/garrison-*.whl)[dev]" "$(ls dist/garrison_hq-*.whl)[dev]"
+      - name: Test against the installed wheels
+        env:
+          OPENAI_API_KEY: dummy-key-for-ci
+          ANTHROPIC_API_KEY: dummy-key-for-ci
+        run: |
+          rm -rf sdk/garrison server/garrison_hq   # so the tests import the installed wheels
+          pytest -q sdk
+          pytest -q server
+
+  publish-testpypi:
+    needs: test
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/garrison
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    # Give this environment required reviewers in the repository settings:
+    # the job waits for that manual approval.
+    environment:
+      name: pypi
+      url: https://pypi.org/p/garrison
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

@@ -16,7 +16,7 @@ jobs:
     strategy:
       matrix:
         # Anvil and Agent Forge both require Python >= 3.11.
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
 
@@ -24,13 +24,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           # Caches pip's downloads and the wheels it builds from the
-          # anvil-ai / agent-forge git dependencies. The key changes only when
-          # the pins in sdk/pyproject.toml change.
+          # anvil-ai / agent-forge git pins. The key changes only when the
+          # pins or the dependency ranges change.
           cache: pip
-          cache-dependency-path: sdk/pyproject.toml
+          cache-dependency-path: |
+            requirements-unreleased.txt
+            sdk/pyproject.toml
 
       - name: Install SDK + dev dependencies
-        run: pip install -e "sdk[dev]"
+        # requirements-unreleased.txt: anvil-ai and agent-forge from GitHub
+        # until they're on PyPI.
+        run: pip install -r requirements-unreleased.txt -e "sdk[dev]"
 
       - name: Run tests
         env:
@@ -42,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13"]
     services:
       # The server's tests run on SQLite and, via TEST_POSTGRES_URL, on Postgres.
       postgres:
@@ -63,11 +67,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
+            requirements-unreleased.txt
             sdk/pyproject.toml
             server/pyproject.toml
 
       - name: Install SDK + server
-        run: pip install -e "sdk" -e "server[dev,postgres]"
+        run: pip install -r requirements-unreleased.txt -e "sdk" -e "server[dev,postgres]"
 
       - name: Run server tests (SQLite + Postgres)
         env:

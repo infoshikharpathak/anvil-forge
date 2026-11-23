@@ -1,0 +1,7 @@
+# anvil-ai and agent-forge aren't on PyPI yet. Until they are, CI and the
+# Dockerfile install them from these commits first, and garrison's own
+# version ranges (anvil-ai>=0.1.0,<0.2, agent-forge>=0.1.0,<0.2) accept them.
+# Delete this file, and its uses in .github/workflows/ci.yml and
+# server/Dockerfile, once both are published.
+anvil-ai @ git+https://github.com/infoshikharpathak/anvil.git@992f97d588a3a8da7ec6e8da726125c08426b253
+agent-forge[anthropic,langgraph] @ git+https://github.com/infoshikharpathak/Agent-Forge.git@417d3735e58896cc55bb778e340dcbb825e35d90

@@ -1,23 +1,47 @@
 [project]
 name = "garrison"
 version = "0.1.0"
-description = "One platform SDK on top of Anvil (governance) and Agent Forge (agents): register apps, tools, agents and flows once; run them governed and traced."
+description = "Governed, traced AI agents: one platform SDK on Anvil (tool governance) and Agent Forge (agents). Register apps, tools, agents and flows once; every run is checked, executed and traced."
+readme = "README.md"
+# license: pending the owner's choice (the repo has no LICENSE yet)
+authors = [{ name = "Shikhar Pathak" }]
 requires-python = ">=3.11"
+keywords = ["agents", "llm", "governance", "guardrails", "tracing", "openai", "anthropic"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Security",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
 dependencies = [
-  # Pinned to the current main commits (Anvil Phase 2, Agent Forge Phase 3).
-  # Full SHAs: pip only caches wheels built from git refs that are immutable commits.
-  "anvil-ai @ git+https://github.com/infoshikharpathak/anvil.git@5110b3541403148d9acb3cf83e8d022dc0d01d34",
-  "agent-forge @ git+https://github.com/infoshikharpathak/Agent-Forge.git@1321e70a3f169964835f1d378a37049d064b9edc",
-  "pydantic>=2.0",
+  "anvil-ai>=0.1.0,<0.2",
+  # [langgraph]: run_flow executes flows on Agent Forge's graph runner.
+  "agent-forge[langgraph]>=0.1.0,<0.2",
+  "pydantic>=2.0,<3",
   "pyyaml>=6.0",
   "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23"]
+# Agents with backend: anthropic.
+anthropic = ["agent-forge[anthropic,langgraph]>=0.1.0,<0.2"]
+dev = ["garrison[anthropic]", "pytest>=8", "pytest-asyncio>=0.23"]
+
+[project.urls]
+Homepage = "https://github.com/infoshikharpathak/garrison"
+Repository = "https://github.com/infoshikharpathak/garrison"
+Issues = "https://github.com/infoshikharpathak/garrison/issues"
+Changelog = "https://github.com/infoshikharpathak/garrison/blob/main/CHANGELOG.md"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]

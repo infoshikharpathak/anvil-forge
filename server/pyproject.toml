@@ -1,15 +1,31 @@
 [project]
 name = "garrison-hq"
 version = "0.1.0"
-description = "garrison control plane: accounts, apps, tools, agents, prompt versions, flows, grants, app keys, and the bundle API the SDK's remote mode pulls from."
+description = "The Garrison control plane: accounts, apps, tools, agents with versioned prompts, flows, grants, app keys, the bundle API for the SDK's remote mode, and trace dashboards."
+readme = "README.md"
+# license: pending the owner's choice (the repo has no LICENSE yet)
+authors = [{ name = "Shikhar Pathak" }]
 requires-python = ">=3.11"
+keywords = ["agents", "llm", "governance", "control-plane", "dashboard", "tracing"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Security",
+  "Framework :: FastAPI",
+]
 dependencies = [
-  # The SDK in this repo (install both: pip install -e sdk -e server).
-  # Its config compiler validates every write.
-  "garrison",
+  # The SDK; its config compiler validates every write.
+  "garrison>=0.1.0,<0.2",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
-  "sqlalchemy>=2.0",
+  "sqlalchemy>=2.0,<3",
   "alembic>=1.13",
   "argon2-cffi>=23.1",
   "jinja2>=3.1",
@@ -21,11 +37,17 @@ dependencies = [
 postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27"]
 
+[project.urls]
+Homepage = "https://github.com/infoshikharpathak/garrison"
+Repository = "https://github.com/infoshikharpathak/garrison"
+Issues = "https://github.com/infoshikharpathak/garrison/issues"
+Changelog = "https://github.com/infoshikharpathak/garrison/blob/main/CHANGELOG.md"
+
 [project.scripts]
 garrison-hq = "garrison_hq.cli:main"
 
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
