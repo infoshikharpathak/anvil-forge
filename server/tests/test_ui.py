@@ -66,7 +66,9 @@ def test_other_users_app_page_is_404(ana, make_client):
 
 
 def test_ui_writes_send_the_csrf_header():
-    js = (Path(__file__).resolve().parents[1] / "garrison_hq" / "static" / "app.js").read_text()
+    import garrison_hq
+
+    js = (Path(garrison_hq.__file__).parent / "static" / "app.js").read_text()  # the installed copy
     assert '"X-Garrison": "1"' in js and 'credentials: "same-origin"' in js
     assert "window.confirm" not in js.replace("without window.confirm", "")
 
