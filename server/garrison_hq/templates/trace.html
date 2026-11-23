@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% from "_macros.html" import badge, tabs %}
+{% block title %}Trace {{ t.trace_id[:8] }} · {{ app.name }} · garrison{% endblock %}
+{% block content %}
+{{ tabs(app, tab) }}
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <h2 style="margin:0">{{ t.agent }}{% if t.flow %} <span class="sub-inline">in flow {{ t.flow }}</span>{% endif %}</h2>
+    {{ badge(t.status) }}
+  </div>
+  <dl class="facts">
+    <dt>trace_id</dt><dd class="mono">{{ t.trace_id }}</dd>
+    <dt>run_id</dt><dd class="mono">{{ t.run_id }}</dd>
+    <dt>Session</dt><dd class="mono">{% if t.session_id %}<a href="/ui/apps/{{ app.name }}/sessions/{{ t.session_id|urlencode }}">{{ t.session_id }}</a>{% else %}—{% endif %}</dd>
+    <dt>Bundle revision</dt><dd>{% if t.bundle_revision is not none %}<span class="mono">{{ t.bundle_revision }}</span>{% else %}— (library mode){% endif %}
+      {% if t.prompt %} · prompt {% if t.prompt.href %}<a href="{{ t.prompt.href }}" class="mono">{{ t.prompt.label }}</a>{% else %}<span class="mono">{{ t.prompt.label }}</span> <span class="sub-inline">(not in the service)</span>{% endif %}{% endif %}</dd>
+    {% if t.caller_app or t.parent %}
+    <dt>Called by</dt><dd>{% if t.caller_app %}<span class="mono">{{ t.caller_app }}</span> <span class="sub-inline">(from its key)</span>{% endif %}
+      {% if t.parent %} · parent trace {% if t.parent.href %}<a href="{{ t.parent.href }}" class="mono">{{ t.parent.app }} / {{ t.parent.trace_id[:8] }}</a>{% else %}<span class="mono">{{ t.parent.trace_id[:8] }}</span> <span class="sub-inline">(not reported here)</span>{% endif %}{% endif %}</dd>
+    {% endif %}
+    {% if t.chain and t.chain|length > 1 %}
+    <dt>Chain</dt><dd class="mono">{{ t.chain|join(' → ') }} <span class="sub-inline">(hops before the direct caller are unverified)</span></dd>
+    {% endif %}
+    {% if t.children %}
+    <dt>Called</dt><dd>{% for c in t.children %}{% if c.href %}<a href="{{ c.href }}" class="mono">{{ c.app }} / {{ c.trace_id[:8] }}</a>{% else %}<span class="mono">{{ c.app }} / {{ c.trace_id[:8] }}</span> <span class="sub-inline">(not reported here)</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}</dd>
+    {% endif %}
+    <dt>Model</dt><dd class="mono">{{ t.model or '—' }}</dd>
+    <dt>Started</dt><dd class="mono">{{ t.started_at|dt }} UTC</dd>
+    <dt>Ended</dt><dd class="mono">{{ t.ended_at|dt }} UTC</dd>
+    <dt>Duration</dt><dd>{{ t.duration_ms|ms }}</dd>
+    <dt>Tokens</dt><dd>{{ t.token_input|num }} in · {{ t.token_output|num }} out · est. {{ t.cost_usd|usd(5) }}{% if t.unpriced %} <span class="sub-inline">({{ 'partial: ' if t.cost_usd is not none }}no price for {{ t.unpriced_models|join(', ') if t.unpriced_models else 'the model' }})</span>{% endif %}</dd>
+  </dl>
+  {% if runs|length > 1 %}
+  <p class="sub" style="margin:8px 0 0">This trace_id has {{ runs|length }} runs:
+    {% for r in runs %}<a href="?run={{ r.run_id }}" class="{{ 'on-run' if r.run_id == t.run_id }}">{{ r.started_at|dt('%H:%M:%S') }} {{ r.agent }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+</div>
+
+<h2>Steps</h2>
+<div class="panel">
+  {% if t.timeline.steps %}
+  <p class="sub">Bars are positioned on the run's {{ t.timeline.span_ms|ms }}.</p>
+  <ol class="timeline">
+    {% for s in t.timeline.steps %}
+    <li class="step {{ s.type }} {{ s.status or '' }}">
+      <span class="what"><span class="type">{{ s.type|replace('_', ' ') }}</span>
+        {% if s.tool %}<code>{{ s.tool }}</code>{% endif %}
+        {% if s.to_agent %}→ <code>{{ s.to_agent }}</code>{% endif %}
+        {% if s.agent and s.type in ('agent_start', 'agent_end', 'handoff') %}<span class="sub-inline">{{ s.agent }}</span>{% endif %}
+        {% if s.status %}{{ badge(s.status) }}{% endif %}
+        {% if s.violation %}<span class="sub-inline">{{ s.violation }}</span>{% endif %}</span>
+      <span class="when mono">{{ s.offset_ms|ms }}{% if s.has_duration %} · {{ s.duration_ms|ms }}{% endif %}</span>
+      <span class="track" aria-hidden="true"><span class="bar" style="left:{{ s.left }}%;width:{{ s.width }}%"></span></span>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}<p class="sub" style="margin:0">The SDK didn't report steps for this run.</p>{% endif %}
+</div>
+
+<h2>Tool calls</h2>
+<div class="panel scroll">
+  <table><thead><tr><th>Tool</th><th>App</th><th>Agent</th><th>Status</th><th class="num">Duration</th><th>Redacted fields</th></tr></thead><tbody>
+  {% for c in t.tool_calls %}
+    <tr><td class="mono">{{ c.tool }}</td>
+      <td>{{ c.app }}{% if c.cross_app %} <span class="pill">cross-app</span>{% endif %}</td>
+      <td>{{ c.agent }}</td>
+      <td>{{ badge(c.status or 'allowed') }}{% if c.violation %} <span class="sub-inline">{{ c.violation }}</span>{% endif %}</td>
+      <td class="num">{{ c.duration_ms|ms }}</td>
+      <td class="mono">{{ (c.redacted_fields or [])|join(', ') or '—' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="sub">No tool calls.</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+
+{% if t.agents|length > 0 %}
+<h2>Agents</h2>
+<div class="panel scroll">
+  <table><thead><tr><th>Agent</th><th>Prompt</th><th>Model</th><th>Status</th><th class="num">Tokens</th><th class="num">Latency</th></tr></thead><tbody>
+  {% for a in t.agents %}
+    <tr><td>{{ a.agent }}{% if a.registered == false %} <span class="pill off">unregistered</span>{% endif %}</td>
+      <td class="mono">{{ a.prompt_version or '—' }}</td><td class="mono">{{ a.model or '—' }}</td>
+      <td>{{ badge(a.status or 'success') }}</td>
+      <td class="num">{{ (a.input_tokens or 0)|num }} / {{ (a.output_tokens or 0)|num }}</td>
+      <td class="num">{{ a.latency_ms|ms }}</td></tr>
+  {% endfor %}
+  </tbody></table>
+</div>
+{% endif %}
+
+<h2>Governance</h2>
+<div class="panel">
+  {% set fired = t.scans|selectattr('detected')|list %}
+  <h3>Injection scans</h3>
+  {% if fired %}
+    <ul>{% for s in fired %}<li>{{ badge('blocked') }} <strong>{{ s.violation or 'classifier verdict: injection' }}</strong>
+      {% if s.tool %}on <code>{{ s.tool }}</code>{% endif %} · {{ s.agent }}
+      · matched <code>{{ s.pattern or 'unknown pattern' }}</code> <span class="sub-inline">({{ s.source }})</span></li>{% endfor %}</ul>
+  {% elif t.scans %}
+    <p class="sub" style="margin:0">{{ t.scans|length }} scan{{ '' if t.scans|length == 1 else 's' }}, nothing detected.</p>
+  {% else %}<p class="sub" style="margin:0">No scans ran.</p>{% endif %}
+  <h3>Violations</h3>
+  {% if t.violations %}
+    <ul>{% for v in t.violations %}<li><code>{{ v.violation }}</code> · {{ v.kind }}{% if v.tool %} <code>{{ v.tool }}</code>{% endif %}{% if v.target_agent %} → {{ v.target_agent }}{% endif %} · {{ v.agent }}</li>{% endfor %}</ul>
+  {% else %}<p class="sub" style="margin:0">None.</p>{% endif %}
+  {% if t.hook_denials %}<p>Hook denials: <strong>{{ t.hook_denials }}</strong></p>{% endif %}
+</div>
+
+{% if t.content %}
+<h2>Content</h2>
+<div class="panel content">
+  <p class="sub">Sent because this app opted in. Secret-looking fields and each tool's redact_fields are replaced before it leaves the app.</p>
+  <details open><summary>Input</summary><pre>{{ t.content.input }}</pre></details>
+  <details open><summary>Output</summary><pre>{{ t.content.output }}</pre></details>
+  {% if t.content.error %}<details open><summary>Error</summary><pre>{{ t.content.error }}</pre></details>{% endif %}
+  {% for a in t.content.agents or [] %}
+  <details><summary>{{ a.agent }}: prompt, input and response</summary>
+    <h3>Prompt</h3><pre>{{ a.prompt }}</pre><h3>Input</h3><pre>{{ a.input }}</pre>
+    <h3>Response</h3><pre>{{ a.output }}</pre>
+    {% if a.raw_output and a.raw_output != a.output %}<h3>Raw response (before the output check)</h3><pre>{{ a.raw_output }}</pre>{% endif %}
+  </details>
+  {% endfor %}
+  {% for c in t.content.tool_calls or [] %}
+  <details><summary>Tool <code>{{ c.tool }}</code>: params and response</summary>
+    <h3>Params</h3><pre>{{ c.params|tojson(indent=2) }}</pre><h3>Response</h3><pre>{{ c.response|tojson(indent=2) }}</pre>
+    {% if c.correction %}<h3>Anvil correction</h3><pre>{{ c.correction }}</pre>{% endif %}
+  </details>
+  {% endfor %}
+</div>
+{% endif %}
+<p class="sub">Received {{ t.received_at|dt }} UTC. The app's local trace file has the full record under this trace_id.</p>
+{% endblock %}

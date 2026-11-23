@@ -11,7 +11,7 @@ _DB_PARAMS = ["sqlite"] + (["postgres"] if os.environ.get("TEST_POSTGRES_URL") e
 
 
 def _reset_postgres(url: str) -> None:
-    from bastion_server.db import make_engine
+    from garrison_hq.db import make_engine
 
     engine = make_engine(url)
     with engine.begin() as conn:
@@ -31,7 +31,7 @@ def db_url(request, tmp_path):
 
 @pytest.fixture
 def migrated(db_url):
-    from bastion_server.db import make_engine, make_sessionmaker, migrate
+    from garrison_hq.db import make_engine, make_sessionmaker, migrate
 
     migrate(db_url)
     engine = make_engine(db_url)
@@ -43,15 +43,15 @@ from dataclasses import replace  # noqa: E402
 
 from fastapi.testclient import TestClient  # noqa: E402
 
-CSRF = {"X-Bastion": "1"}
+CSRF = {"X-Garrison": "1"}
 PASSWORD = "correct horse battery"
 
 
 @pytest.fixture
 def make_client(db_url):
     """make_client(**settings) -> (TestClient, app). Each call is a separate browser."""
-    from bastion_server.app import create_app
-    from bastion_server.settings import Settings
+    from garrison_hq.app import create_app
+    from garrison_hq.settings import Settings
 
     apps = {}
 
@@ -67,7 +67,7 @@ def make_client(db_url):
 
 
 def add_user(app, email="ana@example.com", password=PASSWORD):
-    from bastion_server.accounts import create_user
+    from garrison_hq.accounts import create_user
 
     with app.state.sessionmaker.begin() as db:
         return create_user(db, email, password).id

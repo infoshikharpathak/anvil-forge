@@ -1,12 +1,12 @@
 [project]
-name = "bastion-server"
+name = "garrison-hq"
 version = "0.1.0"
-description = "bastion control plane: accounts, apps, tools, agents, prompt versions, flows, grants, app keys, and the bundle API the SDK's remote mode pulls from."
+description = "garrison control plane: accounts, apps, tools, agents, prompt versions, flows, grants, app keys, and the bundle API the SDK's remote mode pulls from."
 requires-python = ">=3.11"
 dependencies = [
   # The SDK in this repo (install both: pip install -e sdk -e server).
   # Its config compiler validates every write.
-  "bastion",
+  "garrison",
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
   "sqlalchemy>=2.0",
@@ -22,17 +22,17 @@ postgres = ["psycopg[binary]>=3.1"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "httpx>=0.27"]
 
 [project.scripts]
-bastion-server = "bastion_server.cli:main"
+garrison-hq = "garrison_hq.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["bastion_server*"]
+include = ["garrison_hq*"]
 
 [tool.setuptools.package-data]
-bastion_server = ["migrations/*.py", "migrations/versions/*.py", "migrations/script.py.mako", "templates/*.html", "static/*"]
+garrison_hq = ["migrations/*.py", "migrations/versions/*.py", "migrations/script.py.mako", "templates/*.html", "static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

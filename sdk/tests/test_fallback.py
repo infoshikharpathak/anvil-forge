@@ -6,8 +6,8 @@ import json
 import httpx
 import pytest
 
-from bastion import Platform
-from bastion.fallback import fallback_reply
+from garrison import Platform
+from garrison.fallback import fallback_reply
 
 from .conftest import BASE, base_config
 from .llm import ScriptedOpenAI
@@ -280,7 +280,7 @@ async def test_withheld_response_reaches_the_host_but_not_the_model(monkeypatch)
 
 # ── is_requested_action: a deterministic check before flagging ────────────
 
-from bastion import NOT_AN_ACTION  # noqa: E402
+from garrison import NOT_AN_ACTION  # noqa: E402
 
 UNASKED = {"text": "Started it, and I also set up a monthly top-up."}
 LABELS = {"monthly top-up": "unrequested_action"}
@@ -371,7 +371,7 @@ async def test_after_tool_call_can_retry_and_replace_the_result(monkeypatch):
 
 # ── pre-call gate: actions with no OTP behind them ─────────────────────────
 
-from bastion import NotRequested  # noqa: E402
+from garrison import NotRequested  # noqa: E402
 
 
 def gate(answer):

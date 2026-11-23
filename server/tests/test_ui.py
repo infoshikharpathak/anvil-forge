@@ -66,8 +66,8 @@ def test_other_users_app_page_is_404(ana, make_client):
 
 
 def test_ui_writes_send_the_csrf_header():
-    js = (Path(__file__).resolve().parents[1] / "bastion_server" / "static" / "app.js").read_text()
-    assert '"X-Bastion": "1"' in js and 'credentials: "same-origin"' in js
+    js = (Path(__file__).resolve().parents[1] / "garrison_hq" / "static" / "app.js").read_text()
+    assert '"X-Garrison": "1"' in js and 'credentials: "same-origin"' in js
     assert "window.confirm" not in js.replace("without window.confirm", "")
 
 
@@ -79,13 +79,13 @@ def test_static_assets_served(make_client):
 
 def test_template_yaml_downloads_compiles_and_imports(ana):
     import yaml
-    from bastion import load_config
+    from garrison import load_config
 
     client, _ = ana
     page = client.get("/ui").text
-    assert 'href="/static/bastion.template.yaml" download="bastion.yaml"' in page and "Download template" in page
+    assert 'href="/static/garrison.template.yaml" download="garrison.yaml"' in page and "Download template" in page
 
-    r = client.get("/static/bastion.template.yaml")
+    r = client.get("/static/garrison.template.yaml")
     assert r.status_code == 200
     doc = yaml.safe_load(r.text)
     compiled = load_config(doc)  # a valid config as shipped

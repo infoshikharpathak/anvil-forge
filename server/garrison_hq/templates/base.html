@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}garrison{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/ui">garrison</a>
+    {% if user %}
+    <nav>
+      <a href="/ui/dashboard" class="{{ 'on' if section == 'dashboard' }}">Dashboard</a>
+      <a href="/ui" class="{{ 'on' if section == 'apps' }}">Apps</a>
+      <a href="/ui/audit" class="{{ 'on' if section == 'audit' }}">Audit log</a>
+    </nav>
+    <div class="who"><span>{{ user.email }}</span>
+      <button class="ghost" data-api="POST /v1/auth/logout" data-then="/ui/login">Log out</button></div>
+    {% endif %}
+  </header>
+  <main>
+    <p id="page-msg" class="msg"></p>
+    {% block content %}{% endblock %}
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

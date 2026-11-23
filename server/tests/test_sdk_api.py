@@ -3,7 +3,7 @@
 import re
 
 import pytest
-from bastion import load_config
+from garrison import load_config
 
 from .conftest import CSRF, make_ironclad
 
@@ -51,7 +51,7 @@ def test_missing_bad_or_revoked_keys_get_401(keyed):
     from fastapi.testclient import TestClient
 
     assert TestClient(app).get("/v1/sdk/bundle").status_code == 401
-    assert sdk_get(app, "bk_notarealkey").status_code == 401
+    assert sdk_get(app, "gk_notarealkey").status_code == 401
     key_id = client.get("/v1/apps/ironclad/keys").json()[0]["id"]
     client.delete(f"/v1/apps/ironclad/keys/{key_id}")
     assert sdk_get(app, raw).status_code == 401

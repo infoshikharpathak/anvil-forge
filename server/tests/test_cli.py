@@ -4,9 +4,9 @@ import io
 
 from sqlalchemy import select
 
-from bastion_server.cli import _safe_url, main
-from bastion_server.db import make_engine, make_sessionmaker
-from bastion_server.models import User
+from garrison_hq.cli import _safe_url, main
+from garrison_hq.db import make_engine, make_sessionmaker
+from garrison_hq.models import User
 
 
 def test_create_user_from_stdin_then_log_in(db_url, monkeypatch, capsys, make_client):
@@ -21,7 +21,7 @@ def test_create_user_from_stdin_then_log_in(db_url, monkeypatch, capsys, make_cl
     assert user.password_hash.startswith("$argon2id$")
     client, _ = make_client()
     r = client.post("/v1/auth/login", json={"email": "admin@example.com", "password": "correct horse battery"},
-                    headers={"X-Bastion": "1"})
+                    headers={"X-Garrison": "1"})
     assert r.status_code == 200
 
 
@@ -48,7 +48,7 @@ def test_cleanup_traces_deletes_old_and_keeps_recent(db_url, monkeypatch, capsys
 
     import pytest
 
-    from bastion_server.models import Trace
+    from garrison_hq.models import Trace
 
     from .conftest import make_ironclad, post_traces, trace_record
 

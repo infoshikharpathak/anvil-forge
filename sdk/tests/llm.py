@@ -16,7 +16,7 @@ from types import SimpleNamespace
 from anthropic.types import Message
 from openai.types.chat import ChatCompletion
 
-from bastion.classifier import CLASSIFIER_PROMPT
+from garrison.classifier import CLASSIFIER_PROMPT
 
 CLASSIFIER_MARKER = CLASSIFIER_PROMPT[:60]  # classifier calls carry the SDK's prompt
 

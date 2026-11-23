@@ -95,8 +95,8 @@ def test_times_are_utc_whatever_the_database_timezone():
     """Postgres hands back timestamptz in its own TimeZone setting (e.g. IST)."""
     from datetime import timedelta as td
 
-    from bastion_server.routes.ui import _dt
-    from bastion_server.security import aware
+    from garrison_hq.routes.ui import _dt
+    from garrison_hq.security import aware
 
     ist = timezone(td(hours=5, minutes=30))
     at = datetime(2026, 11, 22, 1, 30, tzinfo=ist)  # 20:00 UTC the day before

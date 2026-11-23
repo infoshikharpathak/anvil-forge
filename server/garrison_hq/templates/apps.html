@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Apps · garrison{% endblock %}
+{% block content %}
+<h1>Apps</h1>
+<p class="sub">Each app has its tools, agents and flows. Apps running the SDK in remote mode pull their bundle from here.</p>
+<div class="panel scroll">
+  {% if apps %}
+  <table>
+    <thead><tr><th>App</th><th>Base URL</th><th>Agents</th><th>Tools</th><th>Revision</th><th>Updated</th></tr></thead>
+    <tbody>
+    {% for a in apps %}
+      <tr><td><a href="/ui/apps/{{ a.name }}/dashboard"><strong>{{ a.name }}</strong></a>
+          <a href="/ui/apps/{{ a.name }}" class="sub-inline">config</a></td>
+        <td class="mono">{{ a.base_url or "—" }}</td><td>{{ a.agents }}</td><td>{{ a.tools }}</td>
+        <td class="mono">{{ a.revision }}</td><td>{{ a.updated_at|dt('%Y-%m-%d %H:%M') }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="sub">No apps yet. Create one or import a garrison YAML below.</p>{% endif %}
+</div>
+<div class="row" style="align-items:start">
+  <form class="panel" style="flex:1 1 280px" data-api="POST /v1/apps">
+    <h2 style="margin-top:0">New app</h2>
+    <label>Name <input id="new-app-name" name="name" required pattern="[A-Za-z][A-Za-z0-9_-]*"></label>
+    <label>Base URL <input id="new-app-url" name="base_url" placeholder="http://localhost:8001"></label>
+    <button type="submit">Create app</button><p class="msg"></p>
+  </form>
+  <form class="panel" style="flex:2 1 380px" id="import-form" data-body="yaml" data-api="POST /v1/apps/__/import">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <h2 style="margin:0">Import YAML</h2>
+      <a class="button ghost" href="/static/garrison.template.yaml" download="garrison.yaml">Download template</a>
+    </div>
+    <p class="sub" style="margin-bottom:10px">Start from the template: every section, commented. Edit it, then paste it here.</p>
+    <label>App name (as in the file) <input id="import-app" required></label>
+    <label>garrison config <textarea id="import-yaml" placeholder="apps:&#10;  ironclad:&#10;    ..."></textarea></label>
+    <button type="submit">Import</button><p class="msg"></p>
+  </form>
+</div>
+<script>
+  // the import URL depends on the app name field
+  document.getElementById("import-form").addEventListener("submit", (e) => {
+    const name = document.getElementById("import-app").value.trim();
+    e.currentTarget.dataset.api = `POST /v1/apps/${encodeURIComponent(name)}/import`;
+    e.currentTarget.dataset.then = `/ui/apps/${encodeURIComponent(name)}`;
+  }, true);
+</script>
+{% endblock %}

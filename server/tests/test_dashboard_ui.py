@@ -78,7 +78,7 @@ def test_empty_dashboard_explains_how_to_connect(ana):
     client, _ = ana
     import_yaml(client, IRONCLAD.read_text())
     html = get(client, "/ui/apps/ironclad/dashboard", "dashboard.html").text
-    assert "No traces yet" in html and "BASTION_KEY" in html
+    assert "No traces yet" in html and "GARRISON_KEY" in html
 
 
 def test_traces_list_filters(seeded):

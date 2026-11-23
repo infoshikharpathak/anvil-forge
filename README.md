@@ -1,4 +1,4 @@
-# bastion
+# Garrison
 
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
@@ -16,7 +16,7 @@ python fake_bank.py &             # start this first: a fake bank API on localho
 python quickstart.py
 ```
 
-`bastion.yaml`:
+`garrison.yaml`:
 
 ```yaml
 apps:
@@ -36,17 +36,17 @@ agents:
 
 ```python
 import asyncio
-from bastion import Platform
+from garrison import Platform
 
 async def main():
-    platform = Platform.from_config("bastion.yaml", app="ironclad")
+    platform = Platform.from_config("garrison.yaml", app="ironclad")
     reply = await platform.run_agent("support_agent", "What accounts do I have?")
     print(reply.content, reply.status, reply.trace_id)
 
 asyncio.run(main())
 ```
 
-That run is checked by Anvil at every step: the input, each tool call, and the output. It is executed by Agent Forge, and its full trace is appended to `./bastion_traces.jsonl`.
+That run is checked by Anvil at every step: the input, each tool call, and the output. It is executed by Agent Forge, and its full trace is appended to `./garrison_traces.jsonl`.
 
 ## What you get
 
@@ -57,7 +57,7 @@ That run is checked by Anvil at every step: the input, each tool call, and the o
 - **Injection classifier.** Anvil gets an LLM classifier on the agents' own provider and keys (hybrid mode: regex first). Its tokens and cost are part of each run's trace.
 - **Combined trace.** One record per run merges Agent Forge's run row, Anvil's call records and what the platform saw. It includes, per agent, the prompt version, model, tokens, cost and latency, plus every tool call, violation, hook denial and scan.
   - `LocalSink` (default) keeps full detail: prompts, inputs, outputs and tool params.
-  - `DashboardSink` sends a copy to the bastion service's dashboard (see [Dashboard](#dashboard)). Metadata only unless you opt in to content.
+  - `DashboardSink` sends a copy to the garrison service's dashboard (see [Dashboard](#dashboard)). Metadata only unless you opt in to content.
   - Exporting never blocks or fails a run.
 
 ```python
@@ -74,49 +74,49 @@ platform.describe_agent("support_agent")             # effective policy: tools +
 
 ## Remote mode
 
-Instead of a local YAML file, an app can run on what the bastion control plane (`server/`) publishes for it:
+Instead of a local YAML file, an app can run on what the garrison control plane (`server/`) publishes for it:
 
 ```python
-platform = Platform.from_service("https://bastion.example.com", api_key=os.environ["BASTION_KEY"])
+platform = Platform.from_service("https://garrison.example.com", api_key=os.environ["GARRISON_KEY"])
 ```
 
-- **The app comes from the key.** The bundle is fetched at startup and cached on disk (`~/.cache/bastion`, or `cache_dir=`). The cache holds the bundle and its revision, never the key, and the bundle only names env vars.
+- **The app comes from the key.** The bundle is fetched at startup and cached on disk (`~/.cache/garrison`, or `cache_dir=`). The cache holds the bundle and its revision, never the key, and the bundle only names env vars.
 - **If the service is down at startup**, the platform runs on the cached bundle. With no cache, it fails with an error naming the URL and the cache path. A rejected key always fails.
 - **Updates.** After `start()`, the platform polls every `refresh_interval` seconds (default 30, using the ETag, so an unchanged bundle costs a 304). A new revision is compiled and swapped in: runs in progress finish on the config they started with, new runs use the new one, and tools are re-registered. An open `session_id` moves over on its next turn, keeping its conversation and sequence state, so an edited prompt applies mid-chat without a restart. `await platform.refresh()` checks immediately.
 - **Traces** record `bundle_revision`, so you can tell which published version a run used, and go to the service's dashboard as well as the local file (`dashboard=False` turns that off).
 
 ## Control plane (`server/`)
 
-`bastion-server` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
+`garrison-hq` keeps apps, tools, agents, prompt versions, flows and grants in a database, and publishes each app's bundle to the SDK. Every change is compiled with the SDK's own config compiler first, so an invalid change is rejected with the compiler's error and nothing is saved. Every change is versioned and audited.
 
 ```bash
 pip install -e sdk -e "server[postgres]"
-export DATABASE_URL=sqlite:///./bastion_server.db   # default; or postgresql+psycopg://user:pass@host/db
-bastion-server create-user --email you@example.com  # the first account (prompts for a password)
-bastion-server serve --port 8200                     # migrates, then serves http://localhost:8200/ui
+export DATABASE_URL=sqlite:///./garrison_hq.db   # default; or postgresql+psycopg://user:pass@host/db
+garrison-hq create-user --email you@example.com  # the first account (prompts for a password)
+garrison-hq serve --port 8200                     # migrates, then serves http://localhost:8200/ui
 ```
 
 To connect an app:
-1. Sign in, then import its `bastion.yaml` (or build it in the UI or API).
+1. Sign in, then import its `garrison.yaml` (or build it in the UI or API).
 2. Create an app key. It's shown once.
 3. Run the app with `Platform.from_service("http://localhost:8200", api_key)`.
 
 Prompt edits in the UI reach running apps on their next refresh. Rollback is one click. Every run then shows up in the app's dashboard.
 
-- **Accounts:** argon2 passwords. Sessions live in the database, in an HttpOnly, SameSite=Strict cookie. Every write needs the `X-Bastion: 1` header. Logins are rate-limited per email and per IP. Sign-up is off unless `BASTION_SIGNUP=open`.
-- **App keys:** `bk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle` and `POST /v1/traces`, for their own app.
-- **Docker:** `docker build -f server/Dockerfile -t bastion-server .`, then `docker run -p 8200:8200 -v bastion-data:/data bastion-server`. Create the first user with `docker exec -it <container> bastion-server create-user --email you@example.com`. Behind TLS, set `BASTION_SECURE_COOKIES=1`.
+- **Accounts:** argon2 passwords. Sessions live in the database, in an HttpOnly, SameSite=Strict cookie. Every write needs the `X-Garrison: 1` header. Logins are rate-limited per email and per IP. Sign-up is off unless `GARRISON_SIGNUP=open`.
+- **App keys:** `gk_…`, stored as SHA-256 and revocable. They can only call `GET /v1/sdk/bundle` and `POST /v1/traces`, for their own app.
+- **Docker:** `docker build -f server/Dockerfile -t garrison-hq .`, then `docker run -p 8200:8200 -v garrison-data:/data garrison-hq`. Create the first user with `docker exec -it <container> garrison-hq create-user --email you@example.com`. Behind TLS, set `GARRISON_SECURE_COOKIES=1`.
 
 | Variable | Default | |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./bastion_server.db` | Postgres: `postgresql+psycopg://…` |
-| `BASTION_SIGNUP` | off | `open` enables the sign-up page |
-| `BASTION_SESSION_DAYS` | `7` | session lifetime |
-| `BASTION_SECURE_COOKIES` | off | `1` behind HTTPS |
-| `BASTION_TRUST_PROXY` | off | `1` to rate-limit by `X-Forwarded-For` behind a proxy |
-| `BASTION_AUTO_MIGRATE` | `1` | `0` to run `bastion-server migrate` yourself |
-| `BASTION_TRACE_RATE` | `100` | traces accepted per minute per app key |
-| `BASTION_TRACE_BATCH_MAX` | `100` | most traces in one `POST /v1/traces` |
+| `DATABASE_URL` | `sqlite:///./garrison_hq.db` | Postgres: `postgresql+psycopg://…` |
+| `GARRISON_SIGNUP` | off | `open` enables the sign-up page |
+| `GARRISON_SESSION_DAYS` | `7` | session lifetime |
+| `GARRISON_SECURE_COOKIES` | off | `1` behind HTTPS |
+| `GARRISON_TRUST_PROXY` | off | `1` to rate-limit by `X-Forwarded-For` behind a proxy |
+| `GARRISON_AUTO_MIGRATE` | `1` | `0` to run `garrison-hq migrate` yourself |
+| `GARRISON_TRACE_RATE` | `100` | traces accepted per minute per app key |
+| `GARRISON_TRACE_BATCH_MAX` | `100` | most traces in one `POST /v1/traces` |
 
 ## Dashboard
 
@@ -128,18 +128,18 @@ Apps report every run to the service, and the UI shows them:
 - **A trace**: its bundle revision and the prompt version that revision ran, a step timeline (agent start/end, tool call/result, handoff) with timing bars, tool calls with status and redacted fields, injection scan verdicts, violations, and the content if it was sent.
 - **A session**: every turn of a `session_id` in order, as a conversation when content was sent.
 
-Remote mode reports automatically. In library mode, add a `dashboard` section, or set `BASTION_URL` and `BASTION_KEY`:
+Remote mode reports automatically. In library mode, add a `dashboard` section, or set `GARRISON_URL` and `GARRISON_KEY`:
 
 ```yaml
 dashboard:
   include_content: false   # the default: metadata only
-  # url: and key: default to BASTION_URL and BASTION_KEY; prefer the env vars to a key in the file
+  # url: and key: default to GARRISON_URL and GARRISON_KEY; prefer the env vars to a key in the file
 ```
 
 - **Metadata only by default:** IDs, agents, prompt versions, models, tokens, cost, timings, tool names and statuses, violation types and scan verdicts. With `include_content: true`, prompts, inputs, outputs and tool params and responses are sent too, with secret-looking fields (password, token, key, otp, pin, ...) and each tool's `redact_fields` replaced by `[redacted]`. For a remote-mode app, set it on the service (`PATCH /v1/apps/<app>` with `{"dashboard": {"include_content": true}}`, or in the imported YAML); `Platform.from_service(..., include_content=False)` overrides it in code.
 - **Delivery:** `DashboardSink` queues each trace and posts batches of 20 every 5 seconds in the background. If the service is down, it keeps up to 500 traces and retries; past that it drops the oldest, with a warning. On 429 it waits for `Retry-After`. A rejected key (401/403) stops it, once, with an error. `await platform.close()` sends what's left.
 - **What the service checks:** the record's app must be the key's app, the agent (and flow) must be registered, and `trace_id` must be a UUID. The SDK's default trace IDs are UUIDs; a `trace_id=` you pass yourself must be one too, or the service rejects that trace (the local copy is unaffected). Records with a `run_id` already stored are skipped, so a retried batch isn't stored twice. Each key may send 100 traces a minute.
-- **Retention:** nothing is deleted automatically. `bastion-server cleanup-traces --older-than 30d` deletes traces that started more than 30 days ago (`--dry-run` counts them first).
+- **Retention:** nothing is deleted automatically. `garrison-hq cleanup-traces --older-than 30d` deletes traces that started more than 30 days ago (`--dry-run` counts them first).
 - The local trace file is still the full record. The dashboard is the operational view.
 
 ## Config reference
@@ -152,7 +152,7 @@ dashboard:
 | `grants` | `{tool: notify.send_email, to_apps: [ironclad]}`. A granted tool is called with the **consumer's own credential**, issued to it by the granting app: the consumer app lists `credentials: {notify: env:IRONCLAD_NOTIFY_KEY}`. The granting app's secret is never read by the consumer (its `auth` there may be just `header` and `prefix`), and a granted tool from an app with `auth` but no consumer credential is a load-time `ConfigError`. Control-plane bundles carry only the granting app's header scheme. |
 | `settings` | Passed to Anvil (for example `injection_scanning`) |
 | `classifier` | `enabled` (default true), `provider`, `model` |
-| `dashboard` | optional: `include_content` (default false), `url`, `key` (default to `BASTION_URL` / `BASTION_KEY`), `flush_interval` (5), `batch_size` (20) |
+| `dashboard` | optional: `include_content` (default false), `url`, `key` (default to `GARRISON_URL` / `GARRISON_KEY`), `flush_interval` (5), `batch_size` (20) |
 
 ## Agent-to-agent (A2A)
 
@@ -173,12 +173,12 @@ grants: [{tool: fooddash.ask_fooddash, to_apps: [chathub]}]
 
 It POSTs `{message, session_id}` to `{base_url}/agent/chat` (the model only
 writes `message`; the remote session is one per caller session) with the
-caller's own credential, `X-Bastion-Call-Chain` (e.g. `chathub.assistant`)
-and `X-Bastion-Trace-Id`. It's untrusted by default, so the other agent's
+caller's own credential, `X-Garrison-Call-Chain` (e.g. `chathub.assistant`)
+and `X-Garrison-Trace-Id`. It's untrusted by default, so the other agent's
 reply is injection-scanned like any tool response, and the caller's trace
 lists the callee's trace in `child_traces`.
 
-The receiving app authenticates the caller with `bastion.a2a.CallerKeys`
+The receiving app authenticates the caller with `garrison.a2a.CallerKeys`
 (keys it issued, stored as SHA-256) and starts the run with
 `run_agent(..., caller_app=caller.app, parent_trace_id=caller.parent_trace_id,
 chain=caller.chain)`. **Identity comes from the key only**: a header that

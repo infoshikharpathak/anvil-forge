@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import trace_table %}
+{% block title %}Dashboard · garrison{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<p class="sub">Every app you own. Tokens include the injection classifier's scans. Times are UTC.</p>
+<nav class="tabs" aria-label="Time window">
+  {% for d in windows %}<a href="?days={{ d }}" class="{{ 'on' if d == days }}">Last {{ d }} days</a>{% endfor %}
+</nav>
+
+<div class="tiles">
+  <div class="tile"><span class="label">Traces, last {{ days }} days</span><span class="value">{{ totals.total|num }}</span>
+    <span class="label">{{ totals.blocked|num }} blocked · {{ totals.error|num }} error</span></div>
+  <div class="tile"><span class="label">Tokens, last {{ days }} days</span><span class="value">{{ totals.tokens|num }}</span>
+    <span class="label">{{ totals.token_input|num }} in · {{ totals.token_output|num }} out</span></div>
+  <div class="tile"><span class="label">Est. cost, last {{ days }} days</span><span class="value">{{ totals.cost_usd|usd(2) }}</span>
+    {% if totals.unpriced %}<span class="label">excludes {{ totals.unpriced|num }} trace{{ '' if totals.unpriced == 1 else 's' }} with no price</span>{% endif %}</div>
+  <div class="tile"><span class="label">Tokens today</span><span class="value">{{ today.tokens|num }}</span>
+    <span class="label">{{ today.total|num }} traces</span></div>
+</div>
+
+<h2>Tokens by day</h2>
+<div class="panel">
+  {% if bars.peak %}
+  <svg class="chart bars" viewBox="0 0 {{ bars.width }} {{ bars.height + 20 }}" role="img" aria-label="Tokens per day, last {{ days }} days">
+    {% for b in bars.bars %}<rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}" rx="2"><title>{{ b.day }}: {{ b.value|num }} tokens</title></rect>{% endfor %}
+    {% for l in bars.labels %}<text x="{{ l.x }}" y="{{ bars.height + 15 }}" class="axis">{{ l.label }}</text>{% endfor %}
+  </svg>
+  <p class="legend">Peak {{ bars.peak|num }} tokens in a day</p>
+  {% else %}<p class="sub" style="margin:0">No tokens in this window.</p>{% endif %}
+</div>
+
+<h2>Apps</h2>
+<div class="panel scroll">
+  <table><thead><tr><th>App</th><th class="num">Traces</th><th class="num">Blocked</th><th class="num">Errors</th>
+    <th class="num">Tokens</th><th class="num">Est. cost</th><th>Last trace</th></tr></thead><tbody>
+  {% for a in apps %}
+    <tr><td><a href="/ui/apps/{{ a.name }}/dashboard"><strong>{{ a.name }}</strong></a></td>
+      <td class="num">{{ a.traces|num }}</td><td class="num">{{ a.blocked|num }}</td><td class="num">{{ a.errors|num }}</td>
+      <td class="num">{{ a.tokens|num }}</td><td class="num">{{ a.cost_usd|usd(4) }}{% if a.unpriced %}<span class="sub-inline" title="Left out of the total: no price for the model">(excl. {{ a.unpriced|num }} unpriced)</span>{% endif %}</td>
+      <td class="mono">{{ a.last|dt if a.last else '—' }}</td></tr>
+  {% else %}<tr><td colspan="7" class="sub">No apps yet. <a href="/ui">Create one</a>.</td></tr>{% endfor %}
+  </tbody></table>
+</div>
+
+<div class="cols">
+  <div>
+    <h2>Tokens by model</h2>
+    <div class="panel scroll">
+      <table><thead><tr><th>Model</th><th class="num">Traces</th><th class="num">In</th><th class="num">Out</th><th class="num">Est. cost</th></tr></thead><tbody>
+      {% for m in by_model %}
+        <tr><td class="mono">{{ m.model }}</td><td class="num">{{ m.traces|num }}</td>
+          <td class="num">{{ m.token_input|num }}</td><td class="num">{{ m.token_output|num }}</td>
+          <td class="num">{{ m.cost_usd|usd(4) }}{% if m.unpriced %}<span class="sub-inline" title="Left out of the total: no price for the model">(excl. {{ m.unpriced|num }} unpriced)</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="sub">No traces.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+  <div>
+    <h2>Tokens by day and app</h2>
+    <div class="panel scroll" style="max-height:340px">
+      <table><thead><tr><th>Day</th><th class="num">Tokens</th><th>By app</th></tr></thead><tbody>
+      {% for d in by_day %}
+        <tr><td class="mono">{{ d.day.isoformat() }}</td><td class="num">{{ d.tokens|num }}</td>
+          <td class="sub-inline">{% for name, tok in d.apps|dictsort %}{{ name }} {{ tok|num }}{{ ' · ' if not loop.last }}{% endfor %}</td></tr>
+      {% else %}<tr><td colspan="3" class="sub">No traces.</td></tr>{% endfor %}
+      </tbody></table>
+    </div>
+  </div>
+</div>
+
+<h2>Recent traces, all apps</h2>
+<div class="panel scroll">
+  {% if recent %}{{ trace_table(recent, None, show_app=True) }}
+  {% else %}<p class="sub" style="margin:0">No traces yet. Point an app at this service with GARRISON_URL and GARRISON_KEY.</p>{% endif %}
+</div>
+{% endblock %}

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 import sqlalchemy as sa
 from alembic import command
 
-from bastion_server.db import alembic_config, make_engine, migrate
+from garrison_hq.db import alembic_config, make_engine, migrate
 
 from .conftest import make_ironclad, post_traces, trace_record
 
@@ -29,7 +29,7 @@ def _seed(ana):
 def test_ingest_keeps_null_cost_and_flags_unpriced(ana):
     client, app = ana
     _, priced, unknown, partial = _seed(ana)
-    from bastion_server.models import Trace
+    from garrison_hq.models import Trace
 
     with app.state.sessionmaker() as db:
         rows = {t.trace_id: t for t in db.scalars(sa.select(Trace))}

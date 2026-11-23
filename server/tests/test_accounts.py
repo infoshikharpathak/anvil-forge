@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
-from bastion_server.accounts import AccountError, create_user
-from bastion_server.models import LoginAttempt, User, UserSession
+from garrison_hq.accounts import AccountError, create_user
+from garrison_hq.models import LoginAttempt, User, UserSession
 
 from .conftest import CSRF, PASSWORD, add_user, login
 
@@ -31,7 +31,7 @@ def test_login_sets_a_strict_httponly_cookie_and_stores_only_a_hash(make_client)
     resp = login(client, email="  Ana@Example.com ")  # emails are case/space-insensitive
     cookie = resp.headers["set-cookie"].lower()
     assert "httponly" in cookie and "samesite=strict" in cookie and "path=/" in cookie
-    token = client.cookies.get("bastion_session")
+    token = client.cookies.get("garrison_session")
     with app.state.sessionmaker() as db:
         stored = db.scalar(select(UserSession)).token_hash
     assert stored != token and len(stored) == 64
@@ -42,7 +42,7 @@ def test_writes_need_the_csrf_header(make_client):
     client, app = make_client()
     add_user(app)
     no_header = client.post("/v1/auth/login", json={"email": "ana@example.com", "password": PASSWORD})
-    assert no_header.status_code == 403 and "X-Bastion" in no_header.json()["detail"]
+    assert no_header.status_code == 403 and "X-Garrison" in no_header.json()["detail"]
     login(client)
     assert client.post("/v1/auth/logout").status_code == 403
     assert client.get("/v1/auth/me").status_code == 200  # reads don't need it
@@ -61,11 +61,11 @@ def test_logout_ends_the_session_server_side(make_client):
     client, app = make_client()
     add_user(app)
     login(client)
-    token = client.cookies.get("bastion_session")
+    token = client.cookies.get("garrison_session")
     assert client.post("/v1/auth/logout", headers=CSRF).status_code == 200
     assert client.get("/v1/auth/me").status_code == 401
     other, _ = make_client()  # a stolen copy of the old cookie is dead too
-    other.cookies.set("bastion_session", token)
+    other.cookies.set("garrison_session", token)
     assert other.get("/v1/auth/me").status_code == 401
     with app.state.sessionmaker() as db:
         assert db.scalars(select(UserSession)).all() == []
@@ -86,13 +86,13 @@ def test_sessions_survive_a_restart(make_client, db_url):
     client, app = make_client()
     add_user(app)
     login(client)
-    from bastion_server.app import create_app
-    from bastion_server.settings import Settings
+    from garrison_hq.app import create_app
+    from garrison_hq.settings import Settings
     from dataclasses import replace
     from fastapi.testclient import TestClient
 
     restarted = TestClient(create_app(replace(Settings(), database_url=db_url)))
-    restarted.cookies.set("bastion_session", client.cookies.get("bastion_session"))
+    restarted.cookies.set("garrison_session", client.cookies.get("garrison_session"))
     assert restarted.get("/v1/auth/me").status_code == 200
 
 

@@ -8,10 +8,10 @@ import uuid
 import httpx
 import pytest
 
-from bastion.trace import REDACTED, DashboardSink, TraceExporter, dashboard_record
+from garrison.trace import REDACTED, DashboardSink, TraceExporter, dashboard_record
 
-URL = "http://bastion.test"
-KEY = "bk_" + "k" * 43
+URL = "http://garrison.test"
+KEY = "gk_" + "k" * 43
 
 
 def full_trace(**overrides):

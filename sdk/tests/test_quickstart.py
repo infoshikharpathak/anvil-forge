@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from bastion import Platform
+from garrison import Platform
 
 from .llm import ScriptedOpenAI
 
@@ -43,13 +43,13 @@ def test_readme_snippets_match_the_example_files():
     readme = (ROOT / "README.md").read_text()
     quick = readme[readme.index("## Quickstart"):readme.index("## What you get")]
     blocks = dict(re.findall(r"```(yaml|python)\n(.*?)```", quick, re.S))
-    assert blocks["yaml"] == (EXAMPLE / "bastion.yaml").read_text()
+    assert blocks["yaml"] == (EXAMPLE / "garrison.yaml").read_text()
     assert blocks["python"] == (EXAMPLE / "quickstart.py").read_text()
     assert "python fake_bank.py" in quick  # the "start this first" step
 
 
 async def test_quickstart_config_runs_against_the_fake_bank(fake_bank):
-    cfg = yaml.safe_load((EXAMPLE / "bastion.yaml").read_text())
+    cfg = yaml.safe_load((EXAMPLE / "garrison.yaml").read_text())
     assert cfg["apps"]["ironclad"]["tools"]["get_accounts"]["description"] == "List the user's bank accounts."
     cfg["apps"]["ironclad"]["base_url"] = fake_bank
     instructions = cfg["agents"]["ironclad.support_agent"]["instructions"]

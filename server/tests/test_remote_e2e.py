@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import httpx
-from bastion import Platform
+from garrison import Platform
 from fastapi.testclient import TestClient
 
 from .test_import_export import IRONCLAD, import_yaml

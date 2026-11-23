@@ -1,0 +1,133 @@
+"""garrison-hq: serve, migrate, create-user, cleanup-traces."""
+
+from __future__ import annotations
+
+import argparse
+import getpass
+import re
+import sys
+
+from .settings import load_settings
+
+
+def _serve(args: argparse.Namespace) -> int:
+    import uvicorn
+
+    uvicorn.run("garrison_hq.app:create_app", factory=True, host=args.host, port=args.port,
+                reload=args.reload, proxy_headers=True)
+    return 0
+
+
+def _migrate(_args: argparse.Namespace) -> int:
+    from .db import migrate
+
+    settings = load_settings()
+    migrate(settings.database_url)
+    print(f"Database is up to date ({_safe_url(settings.database_url)}).")
+    return 0
+
+
+def _create_user(args: argparse.Namespace) -> int:
+    from .accounts import AccountError, create_user
+    from .db import make_engine, make_sessionmaker, migrate
+
+    settings = load_settings()
+    if args.password_stdin:
+        password = sys.stdin.readline().rstrip("\n")
+    else:
+        password = getpass.getpass("Password: ")
+        if getpass.getpass("Repeat password: ") != password:
+            print("Passwords don't match.", file=sys.stderr)
+            return 1
+    migrate(settings.database_url)
+    engine = make_engine(settings.database_url)
+    try:
+        with make_sessionmaker(engine).begin() as db:
+            user = create_user(db, args.email, password)
+            email = user.email
+    except AccountError as e:
+        print(e.message, file=sys.stderr)
+        return 1
+    finally:
+        engine.dispose()
+    print(f"Created {email}. Log in at /ui/login.")
+    return 0
+
+
+def _days(value: str) -> int:
+    """'30d' or '30' -> 30."""
+    m = re.fullmatch(r"\s*(\d+)\s*d?\s*", value or "")
+    if not m or int(m.group(1)) < 1:
+        raise argparse.ArgumentTypeError(f"expected a number of days like 30d, got {value!r}")
+    return int(m.group(1))
+
+
+def _cleanup_traces(args: argparse.Namespace) -> int:
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import delete, func, select
+
+    from .db import make_engine, make_sessionmaker, migrate
+    from .models import Trace
+
+    settings = load_settings()
+    migrate(settings.database_url)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=args.older_than)
+    old = Trace.started_at < cutoff
+    engine = make_engine(settings.database_url)
+    try:
+        with make_sessionmaker(engine).begin() as db:
+            count = db.scalar(select(func.count(Trace.id)).where(old)) or 0
+            if not args.dry_run and count:
+                db.execute(delete(Trace).where(old))
+    finally:
+        engine.dispose()
+    when = cutoff.strftime("%Y-%m-%d %H:%M UTC")
+    if args.dry_run:
+        print(f"Would delete {count} trace{'' if count == 1 else 's'} started before {when}.")
+    else:
+        print(f"Deleted {count} trace{'' if count == 1 else 's'} started before {when}.")
+    return 0
+
+
+def _safe_url(url: str) -> str:
+    """Hide a password in a database URL before printing it."""
+    if "@" in url and "://" in url:
+        scheme, rest = url.split("://", 1)
+        creds, host = rest.rsplit("@", 1)
+        user = creds.split(":", 1)[0]
+        return f"{scheme}://{user}:***@{host}"
+    return url
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="garrison-hq", description="garrison control plane")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    serve = sub.add_parser("serve", help="run the service (migrates the database first)")
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8200)
+    serve.add_argument("--reload", action="store_true", help="restart on code changes (development)")
+    serve.set_defaults(func=_serve)
+
+    mig = sub.add_parser("migrate", help="upgrade the database schema to the latest version")
+    mig.set_defaults(func=_migrate)
+
+    cu = sub.add_parser("create-user", help="create an account (how the first user is made)")
+    cu.add_argument("--email", required=True)
+    cu.add_argument("--password-stdin", action="store_true",
+                    help="read the password from stdin instead of prompting (for scripts)")
+    cu.set_defaults(func=_create_user)
+
+    ct = sub.add_parser("cleanup-traces", help="delete traces older than N days (nothing is deleted automatically)")
+    ct.add_argument("--older-than", type=_days, required=True, metavar="Nd",
+                    help="age in days, e.g. 30d; traces that started before then are deleted")
+    ct.add_argument("--dry-run", action="store_true", help="only count what would be deleted")
+    ct.set_defaults(func=_cleanup_traces)
+
+    args = parser.parse_args(argv)
+    return args.func(args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

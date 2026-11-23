@@ -1,6 +1,6 @@
 """Granted tools: the consumer's own credential, never the granting app's auth."""
 
-from bastion.config import load_config
+from garrison.config import load_config
 
 from .conftest import make_ironclad
 

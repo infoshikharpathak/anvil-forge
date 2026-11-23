@@ -3,8 +3,8 @@ it by the granting app. The granting app's secret never leaves it."""
 
 import pytest
 
-from bastion import Platform
-from bastion.config import ConfigError, load_config
+from garrison import Platform
+from garrison.config import ConfigError, load_config
 
 from .llm import ScriptedOpenAI
 from .upstream import Upstream

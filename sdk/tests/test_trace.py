@@ -10,11 +10,11 @@ from agent_forge.tools.sources import register_tool_source, unregister_tool_sour
 from agent_forge.tracing import RunTracer
 from anvil import Anvil
 
-from bastion.agents import ClientProvider, PlatformFactory
-from bastion.config import POLICY_NAME, load_config
-from bastion.hooks import AnvilHooks
-from bastion.tool_source import AnvilToolSource
-from bastion.trace import (
+from garrison.agents import ClientProvider, PlatformFactory
+from garrison.config import POLICY_NAME, load_config
+from garrison.hooks import AnvilHooks
+from garrison.tool_source import AnvilToolSource
+from garrison.trace import (
     Collectors, DashboardSink, LocalSink, RunCollector, TraceExporter, TraceRecorderHooks, TraceSink, build_trace,
 )
 
@@ -116,15 +116,15 @@ async def test_exporter_never_raises_or_hangs(tmp_path, caplog):
             await asyncio.sleep(10)
 
     good = LocalSink(tmp_path / "ok.jsonl")
-    exporter = TraceExporter([Broken(), Slow(), DashboardSink("http://bastion.test", "bk_x"), good], timeout=0.05)
+    exporter = TraceExporter([Broken(), Slow(), DashboardSink("http://garrison.test", "gk_x"), good], timeout=0.05)
     await exporter.export({"trace_id": "x"})  # not a full trace: DashboardSink can't build a record
     assert good.read("x") == [{"trace_id": "x"}]  # later sinks still ran
     assert "Broken failed" in caplog.text and "Slow failed" in caplog.text and "DashboardSink failed" in caplog.text
 
 
 def test_dashboard_sink_is_metadata_only_by_default():
-    assert DashboardSink("http://bastion.test", "bk_x").include_content is False
-    assert DashboardSink("http://bastion.test", "bk_x", include_content=True).include_content is True
+    assert DashboardSink("http://garrison.test", "gk_x").include_content is False
+    assert DashboardSink("http://garrison.test", "gk_x", include_content=True).include_content is True
 
 
 async def test_steps_have_timings(monkeypatch):

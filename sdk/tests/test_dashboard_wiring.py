@@ -6,7 +6,7 @@ import logging
 import httpx
 import pytest
 
-from bastion import DashboardSink, LocalSink, Platform
+from garrison import DashboardSink, LocalSink, Platform
 
 from .conftest import BASE, base_config
 from .llm import ScriptedOpenAI
@@ -18,8 +18,8 @@ SUPPORT = BASE["agents"]["ironclad.support_agent"]["instructions"]
 
 @pytest.fixture(autouse=True)
 def _no_env(monkeypatch):
-    monkeypatch.delenv("BASTION_URL", raising=False)
-    monkeypatch.delenv("BASTION_KEY", raising=False)
+    monkeypatch.delenv("GARRISON_URL", raising=False)
+    monkeypatch.delenv("GARRISON_KEY", raising=False)
     monkeypatch.setenv("IRONCLAD_TOKEN", "tok")
 
 
@@ -39,7 +39,7 @@ def test_library_mode_without_dashboard_or_env_stays_local():
 
 
 def test_library_mode_dashboard_section():
-    p = Platform.from_config(with_dashboard(url="http://svc", key="bk_" + "a" * 43, include_content=True,
+    p = Platform.from_config(with_dashboard(url="http://svc", key="gk_" + "a" * 43, include_content=True,
                                             flush_interval=2, batch_size=10), app="ironclad")
     assert sinks(p) == ["LocalSink", "DashboardSink"]
     d = p.dashboard
@@ -47,16 +47,16 @@ def test_library_mode_dashboard_section():
 
 
 def test_library_mode_section_takes_url_and_key_from_env(monkeypatch):
-    monkeypatch.setenv("BASTION_URL", "http://env-svc/")
-    monkeypatch.setenv("BASTION_KEY", "bk_" + "e" * 43)
+    monkeypatch.setenv("GARRISON_URL", "http://env-svc/")
+    monkeypatch.setenv("GARRISON_KEY", "gk_" + "e" * 43)
     p = Platform.from_config(with_dashboard(include_content=False), app="ironclad")
-    assert p.dashboard.url == "http://env-svc" and p.dashboard._key == "bk_" + "e" * 43
+    assert p.dashboard.url == "http://env-svc" and p.dashboard._key == "gk_" + "e" * 43
     assert p.dashboard.include_content is False
 
 
 def test_library_mode_env_alone_turns_it_on_metadata_only(monkeypatch):
-    monkeypatch.setenv("BASTION_URL", "http://env-svc")
-    monkeypatch.setenv("BASTION_KEY", "bk_" + "e" * 43)
+    monkeypatch.setenv("GARRISON_URL", "http://env-svc")
+    monkeypatch.setenv("GARRISON_KEY", "gk_" + "e" * 43)
     p = Platform.from_config(base_config(), app="ironclad")
     assert p.dashboard is not None and p.dashboard.include_content is False
     assert Platform.from_config(base_config(), app="ironclad", dashboard=False).dashboard is None
@@ -70,7 +70,7 @@ def test_library_mode_section_without_a_key_warns(caplog):
 
 
 def test_dashboard_section_is_validated():
-    from bastion import ConfigError
+    from garrison import ConfigError
 
     with pytest.raises(ConfigError):
         Platform.from_config(with_dashboard(include_contents=True), app="ironclad")
@@ -124,4 +124,4 @@ async def test_a_run_reaches_the_service_and_close_flushes(tmp_path):
 
 
 def test_dashboard_sink_is_exported():
-    assert DashboardSink.__module__ == "bastion.trace"
+    assert DashboardSink.__module__ == "garrison.trace"

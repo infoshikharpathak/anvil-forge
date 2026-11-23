@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from bastion import Platform
-from bastion.a2a import CALL_CHAIN_HEADER, TRACE_ID_HEADER, CallerKeys, hash_key, new_key, parse_chain
-from bastion.trace import dashboard_record
+from garrison import Platform
+from garrison.a2a import CALL_CHAIN_HEADER, TRACE_ID_HEADER, CallerKeys, hash_key, new_key, parse_chain
+from garrison.trace import dashboard_record
 
 from .llm import ScriptedOpenAI
 

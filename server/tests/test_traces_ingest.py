@@ -5,7 +5,7 @@ import uuid
 import pytest
 from sqlalchemy import select
 
-from bastion_server.models import Trace
+from garrison_hq.models import Trace
 
 from .conftest import make_ironclad, post_traces, trace_record
 
@@ -127,7 +127,7 @@ def test_auth_failures(keyed):
 
     anon = TestClient(app)
     assert anon.post("/v1/traces", json=[trace_record()]).status_code == 401
-    for bad in ("bk_" + "x" * 43, "afk_old", raw + "x", ""):
+    for bad in ("gk_" + "x" * 43, "afk_old", raw + "x", ""):
         r = anon.post("/v1/traces", json=[trace_record()], headers={"Authorization": f"Bearer {bad}"})
         assert r.status_code == 401
     # A signed-in browser session is not an app key.

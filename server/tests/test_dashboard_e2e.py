@@ -5,12 +5,12 @@ import json
 from types import SimpleNamespace
 
 import httpx
-from bastion import Platform
-from bastion.classifier import CLASSIFIER_PROMPT
+from garrison import Platform
+from garrison.classifier import CLASSIFIER_PROMPT
 from openai.types.chat import ChatCompletion
 from sqlalchemy import select
 
-from bastion_server.models import Trace
+from garrison_hq.models import Trace
 
 from .test_import_export import IRONCLAD, import_yaml
 from .test_remote_e2e import InProcess
@@ -105,7 +105,7 @@ async def test_content_opt_in_comes_from_the_bundle(ana, tmp_path, monkeypatch):
 def test_import_keeps_include_content_and_refuses_a_key(ana):
     client, _ = ana
     text = IRONCLAD.read_text()
-    with_key = text + "\ndashboard:\n  url: http://localhost:8200\n  key: bk_secret\n  include_content: true\n"
+    with_key = text + "\ndashboard:\n  url: http://localhost:8200\n  key: gk_secret\n  include_content: true\n"
     r = client.post("/v1/apps/ironclad/import", content=with_key, headers={"Content-Type": "application/yaml"})
     assert r.status_code == 422 and "never stores app keys" in r.json()["detail"]
     ok = text + "\ndashboard:\n  url: http://localhost:8200\n  include_content: true\n  flush_interval: 2\n"
@@ -113,5 +113,5 @@ def test_import_keeps_include_content_and_refuses_a_key(ana):
                        headers={"Content-Type": "application/yaml"}).status_code == 200
     assert client.get("/v1/apps/ironclad").json()["dashboard"] == {"include_content": True}
     assert "url" not in client.get("/v1/apps/ironclad/bundle").json()["bundle"]["dashboard"]
-    bad = client.patch("/v1/apps/ironclad", json={"dashboard": {"include_content": True, "key": "bk_x"}})
+    bad = client.patch("/v1/apps/ironclad", json={"dashboard": {"include_content": True, "key": "gk_x"}})
     assert bad.status_code == 422
