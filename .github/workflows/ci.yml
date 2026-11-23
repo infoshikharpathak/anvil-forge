@@ -23,18 +23,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          # Caches pip's downloads and the wheels it builds from the
-          # garrison-anvil / garrison-forge git pins. The key changes only when the
-          # pins or the dependency ranges change.
+          # Caches pip's downloads; garrison-anvil and garrison-forge come
+          # from PyPI. The key changes when the dependency ranges do.
           cache: pip
-          cache-dependency-path: |
-            requirements-unreleased.txt
-            sdk/pyproject.toml
+          cache-dependency-path: sdk/pyproject.toml
 
       - name: Install SDK + dev dependencies
-        # requirements-unreleased.txt: garrison-anvil and garrison-forge from GitHub
-        # until they're on PyPI.
-        run: pip install -r requirements-unreleased.txt -e "sdk[dev]"
+        run: pip install -e "sdk[dev]"
 
       - name: Run tests
         env:
@@ -67,12 +62,11 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: |
-            requirements-unreleased.txt
             sdk/pyproject.toml
             server/pyproject.toml
 
       - name: Install SDK + server
-        run: pip install -r requirements-unreleased.txt -e "sdk" -e "server[dev,postgres]"
+        run: pip install -e "sdk" -e "server[dev,postgres]"
 
       - name: Run server tests (SQLite + Postgres)
         env:

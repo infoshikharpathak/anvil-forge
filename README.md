@@ -1,6 +1,6 @@
 # Garrison
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![garrison-sdk](https://img.shields.io/pypi/v/garrison-sdk.svg)](https://pypi.org/project/garrison-sdk/) [![garrison-hq](https://img.shields.io/pypi/v/garrison-hq.svg)](https://pypi.org/project/garrison-hq/) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 One platform on top of [Anvil](https://github.com/infoshikharpathak/anvil) (tool governance) and [Agent Forge](https://github.com/infoshikharpathak/Agent-Forge) (agents). You declare apps, tools, agents and flows once. Every run is then governed by Anvil, executed by Agent Forge, and traced end to end under one `trace_id`.
 
@@ -19,15 +19,14 @@ Install names differ from import names: `garrison-sdk` is imported as
 `garrison` and `garrison-hq` as `garrison_hq`. Python 3.11 or newer.
 `garrison-sdk` brings `garrison-anvil` (Anvil, imported as
 `anvil`) and `garrison-forge` (Agent Forge, imported as `agent_forge`) from
-PyPI; the install and import names differ for those two. Until those two are published, install them from GitHub first:
-`pip install -r requirements-unreleased.txt`.
+PyPI; the install and import names differ for those two.
 
 ## Quickstart
 
 Everything is in [`examples/quickstart/`](examples/quickstart/), including a stand-in bank API, so it runs on a clean machine:
 
 ```bash
-pip install -r requirements-unreleased.txt -e sdk   # from a clone; or: pip install garrison-sdk
+pip install garrison-sdk          # or, from a clone: pip install -e sdk
 export OPENAI_API_KEY=...         # agents and the injection classifier use the same key
 cd examples/quickstart
 python fake_bank.py &             # start this first: a fake bank API on localhost:8765
@@ -224,7 +223,7 @@ from the control plane) are future work.
 ## Development
 
 ```bash
-python3.12 -m venv .venv && .venv/bin/pip install -r requirements-unreleased.txt -e "sdk[dev]" -e "server[dev,postgres]"
+python3.12 -m venv .venv && .venv/bin/pip install -e "sdk[dev]" -e "server[dev,postgres]"
 .venv/bin/pytest -q sdk        # stubbed LLM + upstream; the live OpenAI test runs only if OPENAI_API_KEY is real
 ```
 

@@ -1,7 +1,0 @@
-# garrison-anvil (repo anvil) and garrison-forge (repo Agent-Forge) aren't on
-# PyPI yet. Until they are, CI and the Dockerfile install them from these commits first, and garrison's own
-# version ranges (garrison-anvil>=0.1.0,<0.2, garrison-forge>=0.1.0,<0.2) accept them.
-# Delete this file, and its uses in .github/workflows/ci.yml and
-# server/Dockerfile, once both are published.
-garrison-anvil @ git+https://github.com/infoshikharpathak/anvil.git@eefba863514cc3f8ddd247fece2696583b27f9cf
-garrison-forge[anthropic,langgraph] @ git+https://github.com/infoshikharpathak/Agent-Forge.git@572d3daed507abd5c8f4db176b496732443531d1
