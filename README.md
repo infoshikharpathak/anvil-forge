@@ -162,7 +162,7 @@ dashboard:
   # url: and key: default to GARRISON_URL and GARRISON_KEY; prefer the env vars to a key in the file
 ```
 
-- **Metadata only by default:** IDs, agents, prompt versions, models, tokens, cost, timings, tool names and statuses, violation types and scan verdicts. With `include_content: true`, prompts, inputs, outputs and tool params and responses are sent too, with secret-looking fields (password, token, key, otp, pin, ...) and each tool's `redact_fields` replaced by `[redacted]`. For a remote-mode app, set it on the service (`PATCH /v1/apps/<app>` with `{"dashboard": {"include_content": true}}`, or in the imported YAML); `Platform.from_service(..., include_content=False)` overrides it in code.
+- **Metadata only by default** (so corrective messages and other content aren't on the dashboard until an app opts in; see [server/README.md](server/README.md#trace-content-is-off-by-default)): IDs, agents, prompt versions, models, tokens, cost, timings, tool names and statuses, violation types and scan verdicts. With `include_content: true`, prompts, inputs, outputs and tool params and responses are sent too, with secret-looking fields (password, token, key, otp, pin, ...) and each tool's `redact_fields` replaced by `[redacted]`. For a remote-mode app, set it on the service (`PATCH /v1/apps/<app>` with `{"dashboard": {"include_content": true}}`, or in the imported YAML); `Platform.from_service(..., include_content=False)` overrides it in code.
 - **Delivery:** `DashboardSink` queues each trace and posts batches of 20 every 5 seconds in the background. If the service is down, it keeps up to 500 traces and retries; past that it drops the oldest, with a warning. On 429 it waits for `Retry-After`. A rejected key (401/403) stops it, once, with an error. `await platform.close()` sends what's left.
 - **What the service checks:** the record's app must be the key's app, the agent (and flow) must be registered, and `trace_id` must be a UUID. The SDK's default trace IDs are UUIDs; a `trace_id=` you pass yourself must be one too, or the service rejects that trace (the local copy is unaffected). Records with a `run_id` already stored are skipped, so a retried batch isn't stored twice. Each key may send 100 traces a minute.
 - **Retention:** nothing is deleted automatically. `garrison-hq cleanup-traces --older-than 30d` deletes traces that started more than 30 days ago (`--dry-run` counts them first).
@@ -197,7 +197,8 @@ apps:
 grants: [{tool: fooddash.ask_fooddash, to_apps: [chathub]}]
 ```
 
-It POSTs `{message, session_id}` to `{base_url}/agent/chat` (the model only
+It POSTs `{message, session_id}` to `{base_url}/agent/chat`, or to the tool's
+full `endpoint` if it sets one (an agent service on its own host) (the model only
 writes `message`; the remote session is one per caller session) with the
 caller's own credential, `X-Garrison-Call-Chain` (e.g. `chathub.assistant`)
 and `X-Garrison-Trace-Id`. It's untrusted by default, so the other agent's

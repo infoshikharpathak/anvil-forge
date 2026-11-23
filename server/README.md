@@ -31,6 +31,51 @@ garrison-hq cleanup-traces --older-than 30d       # delete old traces (--dry-run
 [repo README](https://github.com/infoshikharpathak/garrison#control-plane-server).
 Python 3.11 or newer.
 
+## Trace content is off by default
+
+Traces arrive with metadata only: IDs, agents, prompt versions, models,
+tokens, cost, timings, tool names and statuses, violation types and scan
+verdicts. Content (the agent's input and output, prompts, tool params and
+responses, and Anvil's corrective messages) is not sent unless the app opts
+in. Secret-looking fields and each tool's `redact_fields` are replaced with
+`[redacted]` before content leaves the app.
+
+To turn it on for one app that runs in remote mode (`Platform.from_service`):
+
+```bash
+# with a signed-in session cookie; every write needs the X-Garrison header
+curl -X PATCH http://localhost:8200/v1/apps/<app> -H 'X-Garrison: 1' \
+     -H 'Content-Type: application/json' -d '{"dashboard": {"include_content": true}}'
+```
+
+or put it in the app's YAML and import it:
+
+```yaml
+dashboard:
+  include_content: true
+```
+
+The app picks it up on its next bundle refresh (default every 30 seconds).
+`Platform.from_service(..., include_content=False)` overrides it in code. An
+app in library mode sets `dashboard: {include_content: true}` in its own
+config instead; the service's setting doesn't apply to it.
+
+## Remote agents as tools
+
+A tool with `type: remote_agent` is another app's agent: the SDK POSTs
+`{message, session_id}` to it and the model only writes the message. Give it
+a full `endpoint` when the agent runs on its own host, or a `path` (default
+`/agent/chat`) on the app's `base_url`. The SDK sets its method and
+parameters, so those fields are rejected. Grant it to another app like any
+tool; the consumer calls it with its own key (`credentials`), so the
+granting app needs an `auth` header scheme.
+
+```bash
+curl -X POST http://localhost:8200/v1/apps/fooddash/tools -H 'X-Garrison: 1' \
+     -H 'Content-Type: application/json' \
+     -d '{"name": "ask_fooddash", "type": "remote_agent", "endpoint": "http://localhost:8100/agent/chat"}'
+```
+
 ## From source
 
 ```bash

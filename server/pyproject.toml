@@ -1,6 +1,6 @@
 [project]
 name = "garrison-hq"
-version = "0.1.0"
+version = "0.1.1"
 description = "The Garrison control plane: accounts, apps, tools, agents with versioned prompts, flows, grants, app keys, the bundle API for the SDK's remote mode, and trace dashboards."
 readme = "README.md"
 license = "Apache-2.0"
@@ -23,7 +23,7 @@ classifiers = [
 ]
 dependencies = [
   # The SDK; its config compiler validates every write.
-  "garrison-sdk>=0.1.0,<0.2",
+  "garrison-sdk>=0.1.1,<0.2",  # 0.1.1: remote_agent tools with a full endpoint
   "fastapi>=0.110",
   "uvicorn[standard]>=0.29",
   "sqlalchemy>=2.0,<3",

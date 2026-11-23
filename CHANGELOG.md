@@ -1,11 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.1.1 (unreleased)
 
-- README: the control-plane quickstart installs plain `garrison-hq` (SQLite,
-  the default, needs no database server); Postgres is a separate, optional
-  step with `garrison-hq[postgres]` and `DATABASE_URL`. Docs only; no
-  package release needed.
+garrison-sdk and garrison-hq.
+
+- **garrison-hq: `remote_agent` tools.** The tool schema accepts
+  `type: remote_agent` (another app's agent called as a tool), with a full
+  `endpoint` or a `path` (default `/agent/chat`). Fields the SDK sets for
+  these tools (`method`, `parameters`, `response_schema`) are rejected, as
+  is setting both `path` and `endpoint`. A consumer's grant of such a tool
+  can now be stored, so the chat hub (granted FoodDash's `ask_fooddash`) can
+  run in remote mode from the service. The Tools table labels them
+  "remote agent". garrison-hq now needs garrison-sdk >= 0.1.1.
+- **garrison-sdk: a remote agent with a full `endpoint`.** The default
+  `/agent/chat` path is added only when no `endpoint` is given; before, a
+  tool with an endpoint failed to compile (Anvil rejects both).
+- **Docs:** the server README explains that trace content (inputs,
+  outputs, tool params and responses, corrective messages) is off by
+  default and how to turn it on per app, and documents remote-agent tools.
+  The control-plane quickstart installs plain `garrison-hq` (SQLite, no
+  database server); Postgres is a separate, optional step.
 
 ## 0.1.0 (2026-11-23)
 
